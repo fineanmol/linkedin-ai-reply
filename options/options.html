@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LinkedIn AI Reply — Settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="page">
+
+    <!-- Sidebar -->
+    <nav class="sidebar">
+      <div class="sidebar-logo">
+        <div class="logo-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 12l8-8"/><path d="M18 2h4v4"/>
+          </svg>
+        </div>
+        <div>
+          <div class="logo-title">AI Reply</div>
+          <div class="logo-sub">LinkedIn Assistant</div>
+        </div>
+      </div>
+
+      <ul class="nav-list">
+        <li><a href="#llm" class="nav-link active" data-tab="llm">🤖 LLM Backend</a></li>
+        <li><a href="#style" class="nav-link" data-tab="style">✍️ Style Profile</a></li>
+        <li><a href="#history" class="nav-link" data-tab="history">📋 Reply History</a></li>
+        <li><a href="#advanced" class="nav-link" data-tab="advanced">⚙️ Advanced</a></li>
+      </ul>
+
+      <div class="sidebar-status">
+        <div class="status-indicator" id="sidebar-status">
+          <span class="dot" id="sidebar-dot"></span>
+          <span id="sidebar-label">Checking…</span>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="content">
+
+      <!-- ── LLM Backend Tab ─────────────────────────────────────────── -->
+      <section class="tab-pane active" id="tab-llm">
+        <div class="tab-header">
+          <h1>LLM Backend</h1>
+          <p class="tab-desc">Configure your AI model. All local inference stays on your device — nothing is sent externally unless you enable the Gemini fallback.</p>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Backend Mode</div>
+          <div class="radio-group">
+            <label class="radio-option" id="radio-ollama-label">
+              <input type="radio" name="llmBackend" value="ollama" id="radio-ollama">
+              <div class="radio-content">
+                <div class="radio-title">🏠 Ollama (Local) <span class="badge badge-recommended">Recommended</span></div>
+                <div class="radio-desc">Free, private, runs entirely on your machine. Requires Ollama to be installed and running.</div>
+              </div>
+            </label>
+            <label class="radio-option" id="radio-gemini-label">
+              <input type="radio" name="llmBackend" value="gemini" id="radio-gemini">
+              <div class="radio-content">
+                <div class="radio-title">☁️ Gemini API (Cloud)</div>
+                <div class="radio-desc">Uses Google Gemini with your own API key. Faster, no local install needed. Your data leaves your device.</div>
+              </div>
+            </label>
+            <label class="radio-option" id="radio-auto-label">
+              <input type="radio" name="llmBackend" value="auto" id="radio-auto">
+              <div class="radio-content">
+                <div class="radio-title">🔀 Auto (Ollama → Gemini fallback)</div>
+                <div class="radio-desc">Tries Ollama first; falls back to Gemini if unavailable.</div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- Ollama Config -->
+        <div class="card" id="ollama-config">
+          <div class="card-title">Ollama Configuration</div>
+
+          <div class="form-group">
+            <label class="form-label" for="ollama-url">Ollama Server URL</label>
+            <input class="form-input" type="url" id="ollama-url" value="http://localhost:11434" placeholder="http://localhost:11434">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="ollama-model">Model</label>
+            <div class="model-select-row">
+              <select class="form-input form-select" id="ollama-model">
+                <option value="">Loading models…</option>
+              </select>
+              <button class="btn-icon" id="refresh-models" title="Refresh model list">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+              </button>
+            </div>
+            <div class="form-hint" id="model-status"></div>
+          </div>
+
+          <div class="ollama-setup-box" id="ollama-setup-box">
+            <strong>⚡ Ollama Setup</strong>
+            <ol>
+              <li>Install: <code>brew install ollama</code> or <a href="https://ollama.com" target="_blank">ollama.com</a></li>
+              <li>Start: <code>ollama serve</code></li>
+              <li>Pull a model: <code>ollama pull gemma2:2b</code></li>
+            </ol>
+          </div>
+        </div>
+
+        <!-- Gemini Config -->
+        <div class="card" id="gemini-config" hidden>
+          <div class="card-title">Gemini API Configuration</div>
+
+          <div class="form-group">
+            <label class="form-label" for="gemini-key">API Key</label>
+            <input class="form-input" type="password" id="gemini-key" placeholder="AIza…">
+            <div class="form-hint">Get a free key at <a href="https://aistudio.google.com/app/apikey" target="_blank">Google AI Studio</a></div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="gemini-model">Model</label>
+            <select class="form-input form-select" id="gemini-model">
+              <option value="gemini-2.5-flash">Gemini 2.5 Flash (Fast, Recommended)</option>
+              <option value="gemini-2.5-pro">Gemini 2.5 Pro (Advanced reasoning)</option>
+              <option value="gemini-1.5-flash">Gemini 1.5 Flash (Legacy)</option>
+              <option value="gemini-1.5-pro">Gemini 1.5 Pro (Legacy)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Generation settings -->
+        <div class="card">
+          <div class="card-title">Generation Settings</div>
+          <div class="form-group">
+            <label class="form-label" for="max-length">Max Reply Length: <span id="max-length-val">150</span> words</label>
+            <input type="range" class="form-range" id="max-length" min="30" max="300" step="10" value="150">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="temperature">Creativity (Temperature): <span id="temp-val">0.7</span></label>
+            <input type="range" class="form-range" id="temperature" min="0.1" max="1.0" step="0.1" value="0.7">
+            <div class="form-hint">Lower = more consistent. Higher = more creative.</div>
+          </div>
+        </div>
+
+        <button class="btn-save" id="save-llm">Save LLM Settings</button>
+      </section>
+
+      <!-- ── Style Profile Tab ──────────────────────────────────────────── -->
+      <section class="tab-pane" id="tab-style">
+        <div class="tab-header">
+          <h1>Style Profile</h1>
+          <p class="tab-desc">Teach the AI how you write. The more examples you provide, the more accurately replies will match your voice.</p>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Your Name</div>
+          <div class="form-group">
+            <label class="form-label" for="user-name">Display Name (used in prompts)</label>
+            <input class="form-input" type="text" id="user-name" placeholder="e.g. Anmol Agarwal">
+            <div class="form-hint">Auto-detected from LinkedIn when you visit the page.</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Writing Examples</div>
+          <div class="form-group">
+            <label class="form-label" for="manual-examples">Paste 5–10 examples of how you typically reply on LinkedIn</label>
+            <textarea class="form-input form-textarea" id="manual-examples" rows="10"
+              placeholder="Each line or paragraph becomes a style example. Paste your actual replies here — the more authentic, the better the AI will mimic your voice.
+
+Example:
+Great insight! I've been thinking about this too — especially the part about system design at scale. In my experience, the bottleneck is usually not the algorithm but the data pipeline.
+
+Appreciate you sharing this. One thing I'd add is that the human factor is often underestimated in these transformations."></textarea>
+            <div class="form-hint">These are your highest-priority style examples. The AI prioritizes them over learned samples.</div>
+          </div>
+          <button class="btn-save" id="save-style">Save Style Profile</button>
+        </div>
+
+        <!-- Learned Samples -->
+        <div class="card">
+          <div class="card-title">
+            Learned Samples
+            <span class="card-count" id="samples-count">0</span>
+          </div>
+          <p class="card-desc">Replies you've approved are automatically added here to improve future suggestions.</p>
+          <div class="samples-list" id="samples-list">
+            <div class="empty-state">No learned samples yet. Approve a few replies and they'll appear here.</div>
+          </div>
+          <button class="btn-danger" id="clear-samples">Clear All Samples</button>
+        </div>
+      </section>
+
+      <!-- ── Reply History Tab ──────────────────────────────────────────── -->
+      <section class="tab-pane" id="tab-history">
+        <div class="tab-header">
+          <h1>Reply History</h1>
+          <p class="tab-desc">All generated replies — approved and dismissed.</p>
+        </div>
+
+        <div class="history-toolbar">
+          <span id="history-count">0 entries</span>
+          <button class="btn-danger-sm" id="clear-history">Clear History</button>
+        </div>
+
+        <div class="history-list" id="history-list">
+          <div class="empty-state">No history yet.</div>
+        </div>
+      </section>
+
+      <!-- ── Advanced Tab ────────────────────────────────────────────────── -->
+      <section class="tab-pane" id="tab-advanced">
+        <div class="tab-header">
+          <h1>Advanced Settings</h1>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Behavior</div>
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div class="toggle-title">Auto-learn from approved replies</div>
+              <div class="toggle-desc">Automatically adds approved replies to your style profile.</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="auto-learn" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div class="toggle-title">Debug logging</div>
+              <div class="toggle-desc">Enables verbose logging in the browser console.</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="debug-mode">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Data Management</div>
+          <div class="danger-zone">
+            <button class="btn-danger" id="reset-all">⚠️ Reset All Data</button>
+            <p class="form-hint">Clears all settings, style profile, and reply history. Cannot be undone.</p>
+          </div>
+        </div>
+
+        <button class="btn-save" id="save-advanced">Save Advanced Settings</button>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Toast notification -->
+  <div class="toast" id="toast" hidden></div>
+
+  <script src="options.bundle.js"></script>
+</body>
+</html>

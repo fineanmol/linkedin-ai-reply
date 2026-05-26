@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LinkedIn AI Reply Assistant</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+
+    <!-- Header -->
+    <header class="header">
+      <div class="logo">
+        <div class="logo-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 12l8-8"/><path d="M18 2h4v4"/>
+          </svg>
+        </div>
+        <div class="logo-text">
+          <span class="logo-title">AI Reply</span>
+          <span class="logo-subtitle">LinkedIn Assistant</span>
+        </div>
+      </div>
+      <label class="toggle" aria-label="Enable extension">
+        <input type="checkbox" id="enabled-toggle">
+        <span class="toggle-slider"></span>
+      </label>
+    </header>
+
+    <!-- Status Card -->
+    <div class="status-card" id="status-card">
+      <div class="status-row">
+        <span class="status-dot" id="ollama-dot"></span>
+        <span class="status-label" id="ollama-label">Checking Ollama…</span>
+        <span class="status-model" id="current-model"></span>
+      </div>
+    </div>
+
+    <!-- Quick Stats -->
+    <div class="stats-grid">
+      <div class="stat-item">
+        <span class="stat-num" id="stat-generated">—</span>
+        <span class="stat-label">Generated</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-num" id="stat-approved">—</span>
+        <span class="stat-label">Approved</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-num" id="stat-samples">—</span>
+        <span class="stat-label">Style Samples</span>
+      </div>
+    </div>
+
+    <!-- Setup Warning (shown when Ollama is down) -->
+    <div class="setup-hint" id="setup-hint" hidden>
+      <div class="hint-icon">⚡</div>
+      <div class="hint-content">
+        <strong>Ollama not running</strong>
+        <p>Start it with <code>ollama serve</code></p>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="actions">
+      <button class="btn btn-primary" id="open-options">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+        Settings & Style Profile
+      </button>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <span>v1.0.0</span>
+      <span>·</span>
+      <span>Privacy-first · Local AI</span>
+    </footer>
+
+  </div>
+  <script src="popup.bundle.js"></script>
+</body>
+</html>

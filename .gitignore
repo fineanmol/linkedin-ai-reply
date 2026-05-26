@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+
+# Build output (Chrome loads from dist/, but we don't commit it — users build locally)
+dist/
+
+# Release zips
+*.zip
+
+# Debug / scratch files
+debug-comments.js
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Environment / secrets — NEVER commit these
+.env
+.env.*
+*.env
+config.local.js
+secrets.js
+secrets.json
+
+# Chrome extension local storage exports (may contain API keys)
+liar_settings*.json
+liar_style*.json
+
+# Editor
+.vscode/settings.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# Logs
+*.log
+npm-debug.log*

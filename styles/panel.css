@@ -1,0 +1,6 @@
+/*
+ * panel.css — Exported stylesheet for the reply panel Shadow DOM.
+ * (Currently inlined in reply-panel.js; this file is a reference/override entry.)
+ */
+
+/* No rules needed here — panel styles are embedded in reply-panel.js Shadow DOM */

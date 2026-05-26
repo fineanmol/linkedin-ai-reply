@@ -1,0 +1,18 @@
+{
+  "name": "linkedin-ai-reply",
+  "version": "1.0.0",
+  "description": "> A privacy-first Chrome Extension that learns your writing style and generates contextual reply suggestions for comments on your LinkedIn posts — powered by local AI via Ollama.",
+  "main": "index.js",
+  "scripts": {
+    "build": "node build.js",
+    "dev": "node build.js --dev",
+    "watch": "node build.js --dev && echo 'Watching...' && node -e \"require('fs').watch('content', {recursive:true}, () => require('child_process').exec('node build.js --dev'))\""
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "esbuild": "^0.28.0"
+  }
+}

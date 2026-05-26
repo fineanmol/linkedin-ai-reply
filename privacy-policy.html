@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Policy — LinkedIn AI Reply Assistant</title>
+  <meta name="description" content="Privacy policy for the LinkedIn AI Reply Assistant Chrome extension." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --border: #2a2d3e;
+      --accent: #6366f1;
+      --accent-soft: #6366f120;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --green: #34d399;
+      --green-soft: #34d39915;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      min-height: 100vh;
+    }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 1.5rem 2rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .logo {
+      width: 40px; height: 40px;
+      background: var(--accent);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.2rem;
+    }
+
+    header h1 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    header span {
+      font-size: 0.85rem;
+      color: var(--muted);
+      font-weight: 400;
+    }
+
+    .container {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 3rem 2rem 5rem;
+    }
+
+    .hero {
+      text-align: center;
+      margin-bottom: 3.5rem;
+    }
+
+    .hero h2 {
+      font-size: 2rem;
+      font-weight: 700;
+      margin-bottom: 0.75rem;
+      background: linear-gradient(135deg, #e2e8f0 0%, #6366f1 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero p {
+      color: var(--muted);
+      font-size: 1rem;
+      max-width: 500px;
+      margin: 0 auto;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      background: var(--green-soft);
+      color: var(--green);
+      border: 1px solid var(--green)30;
+      border-radius: 999px;
+      padding: 0.3rem 0.9rem;
+      font-size: 0.8rem;
+      font-weight: 500;
+      margin-bottom: 1.5rem;
+    }
+
+    .badge::before { content: "●"; font-size: 0.5rem; }
+
+    section {
+      margin-bottom: 2.5rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.75rem 2rem;
+    }
+
+    section h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+
+    section h3 .icon {
+      width: 28px; height: 28px;
+      background: var(--accent-soft);
+      border-radius: 7px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.9rem;
+      flex-shrink: 0;
+    }
+
+    p, li { color: var(--muted); font-size: 0.95rem; }
+
+    ul {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+
+    ul li {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.6rem;
+    }
+
+    ul li::before {
+      content: "→";
+      color: var(--accent);
+      flex-shrink: 0;
+      margin-top: 0.05rem;
+    }
+
+    .highlight {
+      background: var(--accent-soft);
+      border: 1px solid var(--accent)30;
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+      margin-top: 1rem;
+      font-size: 0.9rem;
+      color: var(--text);
+    }
+
+    .highlight strong { color: var(--accent); }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 0.5rem;
+      font-size: 0.9rem;
+    }
+
+    th {
+      text-align: left;
+      padding: 0.6rem 0.75rem;
+      color: var(--muted);
+      font-weight: 500;
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 0.65rem 0.75rem;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border)80;
+    }
+
+    td strong { color: var(--text); font-weight: 500; }
+
+    .yes { color: var(--green); font-weight: 600; }
+    .no  { color: #f87171; font-weight: 600; }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.8rem;
+      padding: 2rem;
+      border-top: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">💬</div>
+  <div>
+    <h1>LinkedIn AI Reply Assistant</h1>
+    <span>Chrome Extension</span>
+  </div>
+</header>
+
+<div class="container">
+
+  <div class="hero">
+    <div class="badge">Privacy First</div>
+    <h2>Privacy Policy</h2>
+    <p>We built this extension with privacy as a core feature, not an afterthought.</p>
+  </div>
+
+  <!-- TL;DR -->
+  <section>
+    <h3><span class="icon">⚡</span> The Short Version</h3>
+    <ul>
+      <li>We do not collect, store, or sell any personal data.</li>
+      <li>Your LinkedIn content never leaves your browser — except optionally to generate a reply via AI.</li>
+      <li>With local Ollama mode, everything runs 100% on your machine. Nothing goes anywhere.</li>
+      <li>With Gemini mode, only the comment + post text is sent to Google's API. No account data, no names, no tracking.</li>
+      <li>No analytics, no telemetry, no third-party trackers of any kind.</li>
+    </ul>
+  </section>
+
+  <!-- What we collect -->
+  <section>
+    <h3><span class="icon">📋</span> What Data Is Accessed</h3>
+    <p style="margin-bottom:1rem">The extension reads the following from LinkedIn pages to function:</p>
+    <table>
+      <tr>
+        <th>Data</th>
+        <th>Why</th>
+        <th>Stored?</th>
+        <th>Sent externally?</th>
+      </tr>
+      <tr>
+        <td><strong>Comment text</strong></td>
+        <td>To generate a relevant reply</td>
+        <td class="no">No</td>
+        <td>Only to AI API if you use Gemini mode</td>
+      </tr>
+      <tr>
+        <td><strong>Post text</strong></td>
+        <td>Context for generating replies</td>
+        <td class="no">No</td>
+        <td>Only to AI API if you use Gemini mode</td>
+      </tr>
+      <tr>
+        <td><strong>Your display name</strong></td>
+        <td>To personalise the reply voice</td>
+        <td class="yes">Locally only</td>
+        <td class="no">Never</td>
+      </tr>
+      <tr>
+        <td><strong>Approved replies</strong></td>
+        <td>Style learning (stored locally)</td>
+        <td class="yes">Locally only</td>
+        <td class="no">Never</td>
+      </tr>
+      <tr>
+        <td><strong>API key (Gemini)</strong></td>
+        <td>To authenticate with Google AI</td>
+        <td class="yes">Locally only</td>
+        <td>Sent only to Google's API endpoint</td>
+      </tr>
+    </table>
+  </section>
+
+  <!-- AI Backends -->
+  <section>
+    <h3><span class="icon">🤖</span> AI Backends & Data Flow</h3>
+
+    <p style="margin-bottom:1rem"><strong style="color:var(--text)">Ollama (Local Mode) — Maximum Privacy</strong></p>
+    <ul>
+      <li>All AI inference runs locally on your machine via Ollama.</li>
+      <li>No data is sent to any external server. Zero network requests for AI generation.</li>
+      <li>Recommended if you handle sensitive LinkedIn conversations.</li>
+    </ul>
+
+    <div style="margin-top:1.5rem; margin-bottom:1rem">
+      <strong style="color:var(--text)">Gemini (Cloud Mode)</strong>
+    </div>
+    <ul>
+      <li>Comment text and post text are sent to Google's Generative Language API (<code style="font-size:0.85rem;color:var(--accent)">generativelanguage.googleapis.com</code>) to generate a reply.</li>
+      <li>Your Google AI Studio API key is stored locally in Chrome's storage and sent directly to Google's API — it is never seen by us.</li>
+      <li>Google's data handling is governed by <a href="https://policies.google.com/privacy" target="_blank">Google's Privacy Policy</a>.</li>
+    </ul>
+
+    <div class="highlight">
+      <strong>Important:</strong> In either mode, we never see, log, or store any data on our own servers — because we don't have any servers.
+    </div>
+  </section>
+
+  <!-- Local storage -->
+  <section>
+    <h3><span class="icon">💾</span> Local Storage</h3>
+    <p style="margin-bottom:1rem">The extension stores the following data <strong style="color:var(--text)">only in your browser's local storage</strong> (Chrome's <code style="font-size:0.85rem;color:var(--accent)">chrome.storage.local</code>):</p>
+    <ul>
+      <li>Your settings (enabled/disabled, model selection, reply length)</li>
+      <li>Your Gemini API key (if you choose to use Gemini)</li>
+      <li>Your display name (scraped from LinkedIn for personalisation)</li>
+      <li>Style profile: up to 20 of your approved replies, used to learn your writing style</li>
+      <li>Reply cache: recent generated replies stored temporarily to avoid duplicate API calls</li>
+    </ul>
+    <div class="highlight">
+      This data never leaves your device and can be cleared at any time by removing the extension or via Chrome's storage settings.
+    </div>
+  </section>
+
+  <!-- Permissions -->
+  <section>
+    <h3><span class="icon">🔐</span> Permissions Explained</h3>
+    <table>
+      <tr>
+        <th>Permission</th>
+        <th>Why it's needed</th>
+      </tr>
+      <tr>
+        <td><strong>storage</strong></td>
+        <td>Save your settings, API key, and style profile locally</td>
+      </tr>
+      <tr>
+        <td><strong>activeTab</strong></td>
+        <td>Read the LinkedIn page you're currently viewing</td>
+      </tr>
+      <tr>
+        <td><strong>scripting</strong></td>
+        <td>Inject the AI Reply button into LinkedIn's comment interface</td>
+      </tr>
+      <tr>
+        <td><strong>clipboardWrite</strong></td>
+        <td>Copy the generated reply to your clipboard when you click "Copy"</td>
+      </tr>
+    </table>
+  </section>
+
+  <!-- No tracking -->
+  <section>
+    <h3><span class="icon">🚫</span> What We Don't Do</h3>
+    <ul>
+      <li>We do not track your browsing activity.</li>
+      <li>We do not use analytics or telemetry of any kind.</li>
+      <li>We do not share, sell, or rent any data to third parties.</li>
+      <li>We do not use advertising SDKs or trackers.</li>
+      <li>We do not collect crash reports or usage statistics.</li>
+      <li>We do not require account registration.</li>
+    </ul>
+  </section>
+
+  <!-- Changes -->
+  <section>
+    <h3><span class="icon">📅</span> Changes to This Policy</h3>
+    <p>If this policy changes in a future update, the updated version will be published at this URL. The extension version and effective date will be updated below.</p>
+    <div class="highlight" style="margin-top:1rem">
+      <strong>Effective date:</strong> 27 May 2026 &nbsp;·&nbsp; <strong>Extension version:</strong> 1.0.0
+    </div>
+  </section>
+
+  <!-- Contact -->
+  <section>
+    <h3><span class="icon">✉️</span> Contact</h3>
+    <p>Questions about this privacy policy? Reach out via LinkedIn: <a href="https://www.linkedin.com/in/fineanmol" target="_blank">linkedin.com/in/fineanmol</a></p>
+  </section>
+
+</div>
+
+<footer>
+  &copy; 2026 LinkedIn AI Reply Assistant · Built by <a href="https://www.linkedin.com/in/fineanmol" target="_blank">Anmol Agarwal</a>
+</footer>
+
+</body>
+</html>
