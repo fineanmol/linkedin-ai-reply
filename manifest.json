@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "LinkedIn AI Reply Assistant",
   "version": "1.0.1",
-  "description": "AI-powered reply suggestions for LinkedIn comments. Learns your writing style and generates contextual replies using local LLMs via Ollama.",
+  "description": "Smart AI reply suggestions for LinkedIn comments. Learns your writing style. Works with Gemini AI and local Ollama.",
   "author": "LinkedIn AI Reply Assistant",
 
   "icons": {
