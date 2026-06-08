@@ -1,4 +1,8 @@
-# LinkedIn AI Reply Assistant -  [Chrome Extenstion Link](https://chromewebstore.google.com/detail/fagknlmdpceocanmlampnkhjfgeaipdj?utm_source=item-share-cb)
+# LinkedIn AI Reply Assistant -  
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Chrome Web Store](https://img.shields.io/badge/Chrome_Web_Store-Publishing_Ready-blue.svg)](https://chromewebstore.google.com/detail/fagknlmdpceocanmlampnkhjfgeaipdj?utm_source=item-share-cb)
+
 
 > A privacy-first Chrome Extension that learns your writing style and generates contextual reply suggestions for comments on your LinkedIn posts — powered by local AI via Ollama.
 
