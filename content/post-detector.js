@@ -20,9 +20,7 @@ export async function refreshMyIdentity() {
     logger.log('refreshMyIdentity: starting');
     // 1. Try loading from storage first (user manual settings or previously scraped)
     try {
-      logger.log('refreshMyIdentity: getting identity from storage');
       const saved = await getMyIdentity();
-      logger.log('refreshMyIdentity: got identity from storage:', saved);
       if (saved.name) _cachedName = saved.name;
       if (saved.profileUrl) _cachedProfilePath = saved.profileUrl;
     } catch (err) {
@@ -30,11 +28,8 @@ export async function refreshMyIdentity() {
     }
 
     // 2. Fallback/Update from DOM if missing or if name is 'Me'
-    logger.log('refreshMyIdentity: extracting name and profile URL from DOM');
     const domName = getLoggedInUserName();
-    logger.log('refreshMyIdentity: domName =', domName);
     const domProfile = getLoggedInProfileUrl();
-    logger.log('refreshMyIdentity: domProfile =', domProfile);
 
     if (domName && domName !== 'Me') {
       _cachedName = domName;
@@ -85,22 +80,6 @@ export function getMyIdentityLocal() {
 export function isMyPost(postEl) {
   if (!postEl) return false;
 
-  // Fallback to DOM detection if cache is empty (race condition guard)
-  if (!_cachedName || _cachedName === 'Me') {
-    const domName = getLoggedInUserName();
-    if (domName && domName !== 'Me') {
-      _cachedName = domName;
-      saveMyIdentity(_cachedName, _cachedProfilePath).catch(() => {});
-    }
-  }
-  if (!_cachedProfilePath) {
-    const domProfile = getLoggedInProfileUrl();
-    if (domProfile) {
-      _cachedProfilePath = domProfile;
-      saveMyIdentity(_cachedName, _cachedProfilePath).catch(() => {});
-    }
-  }
-
   const postAuthorPath = getPostAuthorProfilePath(postEl);
   const postAuthorName = getPostAuthorName(postEl);
 
@@ -114,7 +93,7 @@ export function isMyPost(postEl) {
     }
   }
 
-  // Strategy 2: Compare display names (less reliable — name collisions, but handles pronoun/emoji cases now)
+  // Strategy 2: Compare display names
   if (_cachedName && _cachedName !== 'Me' && postAuthorName) {
     const mineClean = cleanNameForComparison(_cachedName);
     const theirsClean = cleanNameForComparison(postAuthorName);
@@ -133,7 +112,7 @@ export function isMyPost(postEl) {
     return true;
   }
 
-  logger.info('PostDetector: NO MATCH for post by author:', postAuthorName, 'path:', postAuthorPath, '| my identity:', { name: _cachedName, path: _cachedProfilePath });
+  logger.log('PostDetector: NO MATCH for post by author:', postAuthorName, 'path:', postAuthorPath, '| my identity:', { name: _cachedName, path: _cachedProfilePath });
   return false;
 }
 

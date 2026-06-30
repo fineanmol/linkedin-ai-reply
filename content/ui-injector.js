@@ -5,11 +5,12 @@
  */
 
 import { classifyIntent } from './intent-classifier.js';
-import { extractCommentData, findAncestorPost, expandSeeMore } from '../utils/dom-helpers.js';
+import { extractCommentData, findAncestorPost, expandSeeMore, findActionBarInComment } from '../utils/dom-helpers.js';
 import { extractPostContent } from './comment-extractor.js';
 import { ReplyPanel } from './reply-panel.js';
 import { SELECTORS, UI } from '../utils/constants.js';
 import logger from '../utils/logger.js';
+import * as icons from './ui/icons.js';
 
 // Track which comments have already been processed
 const processedComments = new WeakSet();
@@ -34,8 +35,8 @@ export function injectReplyButton(commentEl, postContent) {
   // Fallback: if selectors couldn't find the text element, grab all visible
   // text directly from the comment element (strip action buttons etc.)
   if (!comment.text || comment.text.length < 3) {
-    const raw = commentEl.innerText?.trim() || '';
-    // Remove common action bar words that bleed into innerText
+    const raw = commentEl.textContent?.trim() || '';
+    // Remove common action bar words that bleed into textContent
     const cleaned = raw
       .split('\n')
       .filter(line => !['Like', 'Reply', 'React', 'See more', 'See less', '•'].includes(line.trim()))
@@ -43,7 +44,7 @@ export function injectReplyButton(commentEl, postContent) {
       .trim();
     if (cleaned.length >= 3) {
       comment.text = cleaned;
-      logger.log('injectReplyButton: used raw innerText fallback, length:', cleaned.length);
+      logger.log('injectReplyButton: used raw textContent fallback, length:', cleaned.length);
     }
   }
 
@@ -59,13 +60,11 @@ export function injectReplyButton(commentEl, postContent) {
     return;
   }
 
-  // Find the comment's social action bar
-  const actionBar = commentEl.querySelector(
-    '.comments-comment-social-bar, .comments-comment-item__social-bar, [class*="social-bar"]'
-  );
-  logger.log('injectReplyButton: comment social action bar found =', !!actionBar);
+  // Find the comment's social action bar — 2026 strategy: anchor on Reply button text
+  const actionBar = findActionBarInComment(commentEl);
+  logger.log('injectReplyButton: comment action bar found =', !!actionBar);
   if (!actionBar) {
-    logger.log('injectReplyButton: action bar not found, commentEl layout:', commentEl.innerHTML.slice(0, 200) + '...');
+    logger.log('injectReplyButton: action bar not found — could not locate Reply button in comment');
     return;
   }
 
@@ -86,10 +85,8 @@ export function injectReplyButton(commentEl, postContent) {
   btn.setAttribute('aria-label', 'Generate AI reply suggestion');
   btn.setAttribute('data-comment-id', comment.id);
   btn.innerHTML = `
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 12l8-8"/><path d="M18 2h4v4"/>
-    </svg>
-    AI Reply
+    ${icons.LOGO_ICON}
+    <span>AI Reply</span>
   `;
 
   btn.addEventListener('click', (e) => {
@@ -118,7 +115,7 @@ async function handleButtonClick(btn, commentEl) {
 
   // Re-apply the raw-text fallback for click-time extraction too
   if (!comment.text || comment.text.length < 3) {
-    const raw = commentEl.innerText?.trim() || '';
+    const raw = commentEl.textContent?.trim() || '';
     const cleaned = raw
       .split('\n')
       .filter(line => !['Like', 'Reply', 'React', 'See more', 'See less', '•'].includes(line.trim()))
@@ -161,14 +158,15 @@ async function handleButtonClick(btn, commentEl) {
     onApprove: ({ text }) => {
       logger.log('UIInjector: reply approved for comment', panelId);
       // Visual feedback on the button
-      btn.innerHTML = `✓ Copied`;
+      btn.innerHTML = `
+        ${icons.CHECK_ICON}
+        <span>Copied!</span>
+      `;
       btn.classList.add('approved');
       setTimeout(() => {
         btn.innerHTML = `
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 12l8-8"/><path d="M18 2h4v4"/>
-          </svg>
-          AI Reply
+          ${icons.LOGO_ICON}
+          <span>AI Reply</span>
         `;
         btn.classList.remove('approved');
       }, 3000);

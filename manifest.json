@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LinkedIn AI Reply Assistant",
-  "version": "1.0.1",
+  "version": "1.0.4",
   "description": "Smart AI reply suggestions for LinkedIn comments. Learns your writing style. Works with Gemini AI and local Ollama.",
   "author": "LinkedIn AI Reply Assistant",
 
@@ -29,7 +29,9 @@
   "content_scripts": [
     {
       "matches": [
-        "https://www.linkedin.com/*"
+        "https://www.linkedin.com/*",
+        "https://*.linkedin.com/*",
+        "https://linkedin.com/*"
       ],
       "js": ["content/content.bundle.js"],
       "css": ["styles/injected.css"],
@@ -51,6 +53,8 @@
 
   "host_permissions": [
     "https://www.linkedin.com/*",
+    "https://*.linkedin.com/*",
+    "https://linkedin.com/*",
     "http://localhost:11434/*",
     "https://generativelanguage.googleapis.com/*"
   ],
@@ -63,7 +67,11 @@
         "assets/icon48.png",
         "assets/icon128.png"
       ],
-      "matches": ["https://www.linkedin.com/*"]
+      "matches": [
+        "https://www.linkedin.com/*",
+        "https://*.linkedin.com/*",
+        "https://linkedin.com/*"
+      ]
     }
   ]
 }

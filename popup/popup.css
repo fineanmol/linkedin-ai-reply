@@ -5,17 +5,18 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg: #0f172a;
-  --bg2: #1e293b;
-  --bg3: #334155;
-  --accent: #6366f1;
-  --accent2: #8b5cf6;
-  --text: #f1f5f9;
-  --text2: #94a3b8;
-  --text3: #64748b;
-  --green: #22c55e;
-  --red: #ef4444;
-  --border: rgba(255,255,255,0.08);
+  --bg: #ffffff;
+  --bg2: #f8fafc;
+  --bg3: #e2e8f0;
+  --accent: #5cc3e8; /* Sky Blue */
+  --accent-dark: #314855; /* Navy */
+  --text: #314855;
+  --text2: rgba(49, 72, 85, 0.85);
+  --text3: rgba(49, 72, 85, 0.6);
+  --green: #79ceb8; /* Mint */
+  --red: #e95f5c; /* Coral */
+  --sunshine: #ffdb00; /* Sunshine */
+  --border: rgba(49, 72, 85, 0.12);
   --radius: 12px;
 }
 
@@ -39,8 +40,9 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 16px 18px 14px;
-  background: linear-gradient(135deg, #1e1b4b 0%, #1e293b 100%);
+  background: var(--accent-dark);
   border-bottom: 1px solid var(--border);
+  color: white;
 }
 
 .logo {
@@ -50,29 +52,32 @@ body {
 }
 
 .logo-icon {
-  width: 34px;
-  height: 34px;
-  background: linear-gradient(135deg, var(--accent), var(--accent2));
-  border-radius: 9px;
+  width: 32px;
+  height: 32px;
+  background: var(--accent);
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  box-shadow: 0 4px 12px rgba(99,102,241,0.4);
+}
+
+.logo-icon svg {
+  color: white;
 }
 
 .logo-title {
   display: block;
   font-size: 15px;
   font-weight: 700;
-  color: var(--text);
+  color: white;
   line-height: 1.2;
 }
 
 .logo-subtitle {
   display: block;
   font-size: 11px;
-  color: var(--text3);
+  color: rgba(255, 255, 255, 0.7);
   font-weight: 400;
 }
 
@@ -81,7 +86,7 @@ body {
 .toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
 .toggle-slider {
   position: absolute; inset: 0;
-  background: var(--bg3);
+  background: rgba(255, 255, 255, 0.3);
   border-radius: 24px;
   transition: background 0.2s;
 }
@@ -93,9 +98,8 @@ body {
   background: white;
   border-radius: 50%;
   transition: transform 0.2s;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
 }
-.toggle input:checked + .toggle-slider { background: var(--accent); }
+.toggle input:checked + .toggle-slider { background: var(--green); }
 .toggle input:checked + .toggle-slider::before { transform: translateX(18px); }
 
 /* Status Card */
@@ -126,19 +130,20 @@ body {
 .status-dot.offline { background: var(--red); }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(34,197,94,0.4); }
-  50% { opacity: 0.8; box-shadow: 0 0 0 4px rgba(34,197,94,0); }
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(121,206,184,0.4); }
+  50% { opacity: 0.8; box-shadow: 0 0 0 4px rgba(121,206,184,0); }
 }
 
 .status-label {
   font-size: 13px;
   color: var(--text2);
   flex: 1;
+  font-weight: 550;
 }
 
 .status-model {
   font-size: 11px;
-  color: var(--text3);
+  color: var(--text);
   background: var(--bg3);
   padding: 2px 8px;
   border-radius: 10px;
@@ -168,7 +173,7 @@ body {
   display: block;
   font-size: 20px;
   font-weight: 700;
-  color: var(--accent);
+  color: var(--accent-dark);
   line-height: 1;
   margin-bottom: 4px;
 }
@@ -179,7 +184,7 @@ body {
   color: var(--text3);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 /* Setup Hint */
@@ -189,10 +194,10 @@ body {
   gap: 10px;
   margin: 12px 16px 0;
   padding: 12px 14px;
-  background: rgba(239,68,68,0.08);
-  border: 1px solid rgba(239,68,68,0.2);
+  background: rgba(233,95,92,0.08);
+  border: 1px solid rgba(233,95,92,0.2);
   border-radius: var(--radius);
-  color: #fca5a5;
+  color: #c94c49;
 }
 
 .hint-icon { font-size: 18px; flex-shrink: 0; line-height: 1; }
@@ -200,7 +205,7 @@ body {
 .hint-content strong { display: block; font-size: 13px; font-weight: 600; margin-bottom: 3px; }
 .hint-content p { font-size: 12px; color: var(--text2); }
 .hint-content code {
-  background: rgba(255,255,255,0.08);
+  background: rgba(49,72,85,0.08);
   padding: 1px 5px;
   border-radius: 4px;
   font-family: 'SF Mono', 'Fira Code', monospace;
@@ -229,14 +234,12 @@ body {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  background: var(--accent);
   color: white;
-  box-shadow: 0 4px 12px rgba(99,102,241,0.25);
 }
 
 .btn-primary:hover {
-  filter: brightness(1.1);
-  box-shadow: 0 6px 20px rgba(99,102,241,0.35);
+  filter: brightness(0.95);
   transform: translateY(-1px);
 }
 

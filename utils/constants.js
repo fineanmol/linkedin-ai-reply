@@ -1,38 +1,93 @@
 /**
  * constants.js
  * Central registry for selectors, config keys, and defaults.
- * Update LinkedIn selectors here when LinkedIn changes their DOM.
+ *
+ * ⚠️  LinkedIn DOM Strategy — 2026
+ * LinkedIn now uses FULLY OBFUSCATED hashed CSS class names
+ * (e.g. _635732cb, dfebbce0). These rotate with every deploy.
+ * We CANNOT rely on class names for comment/social-bar detection.
+ *
+ * What IS stable:
+ *   ✅ data-testid="expandable-text-box"  → comment text span
+ *   ✅ componentkey^="comment-commentary_" → comment text paragraph
+ *   ✅ data-id*="urn:li:activity"          → post containers
+ *   ✅ data-urn*="urn:li:activity"         → post containers (alt attr)
+ *   ✅ a[href*="/in/"]                     → profile links
+ *   ✅ a[href*="urn:li:activity"]          → post/comment links
+ *   ✅ aria-label containing "comment"    → overflow menus
+ *   ✅ visible button text "Reply"         → action bar anchor (checked via JS)
+ *   ⚠️  CSS class names                   → UNRELIABLE, use as last resort
  */
 
 // ─── LinkedIn DOM Selectors ────────────────────────────────────────────────
 export const SELECTORS = {
-  // Feed posts
-  FEED_POST: 'div[data-id]',
-  POST_CONTAINER: '.feed-shared-update-v2',
-  POST_CONTENT: '.feed-shared-update-v2__description, .update-components-text',
+  // Post containers — data-id/data-urn haven't changed since 2019
+  POST_CONTAINER: [
+    '[data-id*="urn:li:activity"]',
+    '[data-urn*="urn:li:activity"]',
+    '.feed-shared-update-v2',           // legacy fallback
+    '.occludable-update',
+    'article.update-components-article',
+  ].join(', '),
 
-  // Post author
-  POST_AUTHOR_NAME: '.update-components-actor__name span[aria-hidden="true"]',
-  POST_AUTHOR_LINK: '.update-components-actor__meta-link',
-  POST_AUTHOR_URN: '[data-id]', // data-id contains urn
+  POST_CONTENT: [
+    '[data-testid="main-feed-activity-card__commentary"]',
+    '[data-testid*="commentary"]',
+    '.feed-shared-update-v2__description',
+    '.update-components-text',
+    '[class*="update-components-text"]',
+  ].join(', '),
 
-  // Comments section
-  COMMENTS_SECTION: '.comments-comments-list',
-  COMMENT_ITEM: '.comments-comment-item',
-  COMMENT_TEXT: '.comments-comment-item__main-content',
-  COMMENT_AUTHOR_NAME: '.comments-post-meta__name-text',
-  COMMENT_TIMESTAMP: '.comments-comment-item__timestamp',
-  COMMENT_ACTIONS: '.comments-comment-social-bar',
-  REPLY_BUTTON: '.comments-comment-social-bar__reply-action-button',
+  // Post author — class-based but rarely changes since they are BEM-style
+  POST_AUTHOR_NAME: [
+    '.update-components-actor__name span[aria-hidden="true"]',
+    '.update-components-actor__name',
+    '[class*="actor__name"] span[aria-hidden]',
+  ].join(', '),
+  POST_AUTHOR_LINK: [
+    '.update-components-actor__meta-link',
+    '.update-components-actor a[href*="/in/"]',
+    '[class*="actor"] a[href*="/in/"]',
+  ].join(', '),
 
-  // Profile / logged-in user
-  NAV_IDENTITY_MODULE: '.global-nav__me-photo, .nav-item__profile-member-photo',
-  PROFILE_NAME_IN_NAV: '.global-nav__me-title',
+  // Comment text anchors — PRIMARY detection strategy (stable 2026)
+  COMMENT_TEXT_ANCHOR: [
+    '[data-testid="expandable-text-box"]',
+    '[componentkey^="comment-commentary_"]',
+  ].join(', '),
 
-  // "See more" / "View all comments" expansion
-  LOAD_MORE_COMMENTS: 'button.comments-comments-list__load-more-comments-button',
+  // Legacy class-based comment selectors (kept for older LI versions)
+  COMMENT_ITEM: '.comments-comment-item, [class*="comment-item"], [class*="comment-entity"]',
+  COMMENT_TEXT: '.comments-comment-item__main-content, [class*="comment-item__main-content"]',
+  COMMENT_AUTHOR_NAME: '.comments-post-meta__name-text, [class*="post-meta__name-text"]',
+  COMMENT_TIMESTAMP: '.comments-comment-item__timestamp, [class*="comment-item__timestamp"]',
 
-  // The injected button we add
+  // Action bar — class-based selectors BROKEN in 2026.
+  // Use findActionBarInComment() in dom-helpers.js (anchors on "Reply" button text).
+  COMMENT_ACTIONS: [
+    '.comments-comment-social-bar',
+    '[class*="social-actions-bar"]',
+    '[class*="social-bar"]',
+  ].join(', '),
+
+  // Logged-in user
+  NAV_IDENTITY_MODULE: [
+    '.global-nav__me-photo',
+    '.global-nav__me img',
+    'header img[class*="profile-photo"]',
+    'header nav img[alt]',
+  ].join(', '),
+  PROFILE_NAME_IN_NAV: [
+    '.global-nav__me-title',
+    '[class*="me-title"]',
+  ].join(', '),
+
+  LOAD_MORE_COMMENTS: [
+    'button[aria-label*="Load more comments" i]',
+    'button[class*="load-more-comments"]',
+    'button.comments-comments-list__load-more-comments-button',
+  ].join(', '),
+
   AI_REPLY_BUTTON: '.liar-ai-reply-btn',
   AI_REPLY_PANEL: '.liar-reply-panel',
 };
@@ -86,7 +141,7 @@ export const INTENT_CONFIG = {
 
 // ─── Style Profile Defaults ────────────────────────────────────────────────
 export const DEFAULT_STYLE_PROFILE = {
-  samples: [],                // Array of { id, text, intent, timestamp, source }
+  samples: [],
   fingerprint: {
     avgWordsPerSentence: 15,
     usesEmoji: false,
@@ -94,7 +149,7 @@ export const DEFAULT_STYLE_PROFILE = {
     commonPhrases: [],
     signature: null,
   },
-  manualExamples: '',         // User-pasted examples from options page
+  manualExamples: '',
   maxSamples: 100,
 };
 

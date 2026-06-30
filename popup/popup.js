@@ -36,6 +36,12 @@ async function init() {
   // Load stats
   await loadStats();
 
+  // Dynamic version from manifest
+  const versionEl = document.getElementById('ext-version');
+  if (versionEl) {
+    versionEl.textContent = `v${chrome.runtime.getManifest().version}`;
+  }
+
   // Open settings
   document.getElementById('open-options')?.addEventListener('click', () => {
     chrome.runtime.openOptionsPage();
