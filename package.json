@@ -9,7 +9,7 @@
     "watch": "node build.js --dev && echo 'Watching...' && node -e \"require('fs').watch('content', {recursive:true}, () => require('child_process').exec('node build.js --dev'))\""
   },
   "keywords": [],
-  "author": "",
+  "author": "NightOwlDevelopers.com",
   "license": "ISC",
   "type": "commonjs",
   "devDependencies": {
