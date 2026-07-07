@@ -85,34 +85,4 @@ export class OllamaClient {
     const data = await res.json();
     return data.message?.content?.trim() || '';
   }
-
-  // ─── Generate (non-chat) ───────────────────────────────────────────────
-
-  /**
-   * Raw generation endpoint (for models that don't support chat).
-   */
-  async generate({ model, prompt, temperature = 0.7, signal }) {
-    const url = `${this.baseUrl}/api/generate`;
-    const body = {
-      model,
-      prompt,
-      stream: false,
-      options: { temperature, top_p: 0.9, num_predict: 2048, num_ctx: 8192 },
-    };
-
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: signal || AbortSignal.timeout(180_000),
-    });
-
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`Ollama generate error ${res.status}: ${err}`);
-    }
-
-    const data = await res.json();
-    return data.response?.trim() || '';
-  }
 }

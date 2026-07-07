@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LinkedIn AI Reply Assistant",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Smart AI reply suggestions for LinkedIn comments. Learns your writing style. Works with Gemini AI and local Ollama.",
   "author": "NightOwlDevelopers.com",
 
@@ -58,7 +58,6 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "styles/panel.css",
         "assets/icon16.png",
         "assets/icon48.png",
         "assets/icon128.png"

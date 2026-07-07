@@ -94,7 +94,6 @@ async function build() {
     'options/options.html',
     'options/options.css',
     'styles/injected.css',
-    'styles/panel.css',
   ];
 
   fs.mkdirSync('dist/styles', { recursive: true });

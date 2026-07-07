@@ -8,7 +8,7 @@
 /* ─── AI Reply Button ─────────────────────────────────────────────────────── */
 
 .liar-ai-reply-btn {
-  display: inline-flex;
+  display: inline-flex !important;
   align-items: center;
   gap: 5px;
   padding: 4px 10px;
@@ -27,6 +27,24 @@
   letter-spacing: 0.01em;
   position: relative;
   overflow: hidden;
+  /* Guard against LinkedIn's flex action rows crushing us to zero width,
+     or an ancestor's overflow:hidden clipping the injected button. */
+  flex: 0 0 auto;
+  min-width: max-content;
+  height: auto;
+  width: auto;
+  visibility: visible !important;
+  opacity: 1 !important;
+  z-index: 1;
+}
+
+.liar-ai-reply-btn > span {
+  display: inline;
+}
+
+/* Keep the logo icon from being squeezed inside the flex button */
+.liar-ai-reply-btn svg {
+  flex-shrink: 0;
 }
 
 .liar-ai-reply-btn::before {

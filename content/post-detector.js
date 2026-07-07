@@ -1,10 +1,11 @@
 /**
  * post-detector.js
- * Determines if a LinkedIn post was authored by the currently logged-in user.
- * Uses multiple detection strategies with graceful fallbacks.
+ * Resolves and caches the logged-in user's identity (name + profile path),
+ * used to personalize the LLM prompt. (Post-ownership detection was removed —
+ * the extension now assists on all posts' comments.)
  */
 
-import { getLoggedInUserName, getLoggedInProfileUrl, getPostAuthorName, getPostAuthorProfilePath } from '../utils/dom-helpers.js';
+import { getLoggedInUserName, getLoggedInProfileUrl } from '../utils/dom-helpers.js';
 import logger from '../utils/logger.js';
 import { getMyIdentity, saveMyIdentity } from '../utils/storage.js';
 
@@ -53,74 +54,13 @@ export async function refreshMyIdentity() {
 }
 
 /**
- * Normalizes names for comparison, stripping out emojis, pronouns (e.g. (He/Him)), punctuation, and extra whitespace.
- */
-function cleanNameForComparison(name) {
-  if (!name) return '';
-  return name.toLowerCase()
-    .replace(/\s*\([^)]+\)/g, '') // remove pronouns in parentheses like (He/Him)
-    .replace(/[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF]/g, '') // remove emojis
-    .replace(/[^a-z0-9\s]/g, '') // remove punctuation/special chars
-    .replace(/\s+/g, ' ') // collapse consecutive whitespace
-    .trim();
-}
-
-/**
  * Returns the current known identity (name + profile path).
  */
 export function getMyIdentityLocal() {
   return { name: _cachedName, profilePath: _cachedProfilePath };
 }
 
-/**
- * Check if a post element was authored by the logged-in user.
- * @param {Element} postEl - The post container element
- * @returns {boolean}
- */
-export function isMyPost(postEl) {
-  if (!postEl) return false;
-
-  const postAuthorPath = getPostAuthorProfilePath(postEl);
-  const postAuthorName = getPostAuthorName(postEl);
-
-  // Strategy 1: Compare profile URLs (most reliable)
-  if (_cachedProfilePath && postAuthorPath) {
-    const mine = _cachedProfilePath.toLowerCase().replace(/\/$/, '');
-    const theirs = postAuthorPath.toLowerCase().replace(/\/$/, '');
-    if (mine === theirs || theirs.startsWith(mine)) {
-      logger.info('PostDetector: MATCHED by profile URL | author:', postAuthorName, '| path:', postAuthorPath);
-      return true;
-    }
-  }
-
-  // Strategy 2: Compare display names
-  if (_cachedName && _cachedName !== 'Me' && postAuthorName) {
-    const mineClean = cleanNameForComparison(_cachedName);
-    const theirsClean = cleanNameForComparison(postAuthorName);
-    if (mineClean && theirsClean && mineClean === theirsClean) {
-      logger.info('PostDetector: MATCHED by name | myName:', _cachedName, '| authorName:', postAuthorName);
-      return true;
-    }
-  }
-
-  // Strategy 3: Look for "Edit post" or ownership signals in the post's overflow menu
-  const hasEditButton = !!postEl.querySelector(
-    '[aria-label*="Edit post"], [data-control-name="edit_post"], .feed-shared-update-v2__control-menu button[aria-label*="Edit"]'
-  );
-  if (hasEditButton) {
-    logger.info('PostDetector: MATCHED by edit button presence | author:', postAuthorName);
-    return true;
-  }
-
-  logger.log('PostDetector: NO MATCH for post by author:', postAuthorName, 'path:', postAuthorPath, '| my identity:', { name: _cachedName, path: _cachedProfilePath });
-  return false;
-}
-
-/**
- * Scan all visible posts and return only those authored by the user.
- * @returns {Element[]}
- */
-export function findMyPosts() {
-  const allPosts = document.querySelectorAll('.feed-shared-update-v2, [data-id*="urn:li:activity"]');
-  return [...allPosts].filter(post => isMyPost(post));
-}
+// NOTE: The extension injects on ALL posts' comments (not just the user's own),
+// so the previous isMyPost()/findMyPosts() ownership-detection engine has been
+// removed as dead code. This module now only manages the logged-in user's
+// identity, which is used to personalize the LLM prompt (userName).

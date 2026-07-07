@@ -237,18 +237,29 @@ export function getLoggedInProfileUrl() {
 }
 
 export function getLoggedInUserName() {
+  // A LinkedIn display name is short (≤~60 chars). Anything longer means we
+  // over-captured a headline/bio, so reject it.
+  const looksLikeName = (s) => s && s.toLowerCase() !== 'me' && s.length <= 60 && !s.includes('|');
+
   const profileUrl = getLoggedInProfileUrl();
   if (profileUrl) {
     // Find all links to this profile URL and extract name
     const links = document.querySelectorAll(`a[href*="${profileUrl}"]`);
     for (const link of links) {
+      // 1. Image alt is the cleanest source (e.g. "View Anmol Agarwal's profile")
       const img = link.querySelector('img[alt]');
       if (img?.alt) {
         const name = extractNameFromPhotoAlt(img.alt);
-        if (name && name.toLowerCase() !== 'me') return name;
+        if (looksLikeName(name)) return name;
       }
+      // 2. First non-hidden leaf span — avoids grabbing headline/location that
+      //    live in sibling <p> elements inside the same link.
+      const firstSpan = link.querySelector('span:not([aria-hidden="true"])');
+      const spanText = firstSpan?.textContent?.trim();
+      if (looksLikeName(spanText)) return spanText;
+      // 3. Fall back to full text only if it's short enough to be a name.
       const text = extractText(link);
-      if (text && text.toLowerCase() !== 'me') return text;
+      if (looksLikeName(text)) return text;
     }
   }
 
@@ -321,33 +332,43 @@ export function getPostContent(postEl) {
  * Find the button inside `el` whose VISIBLE text is exactly "Reply".
  * Checks span children to avoid matching aria-hidden spans.
  */
+// Localized "Reply" words. Shared by all detection paths.
+export const REPLY_WORDS = new Set([
+  'reply', 'répondre', 'antworten', 'responder', 'rispondi', 'beantwoorden',
+  'odpowiedz', 'yanıtla', 'उत्तर दें', 'رد', '回复', '回覆', '返信', '답글',
+  'svar', 'svara', 'vastaa', 'balas', 'trả lời', 'ตอบกลับ', 'відповісти', 'ответить'
+]);
+
+/**
+ * Does this text look like a "Reply" action label?
+ * Matches exact words AND aria-labels like "Reply to Anmol's comment"
+ * (LinkedIn's 2026 buttons often use a descriptive aria-label, not bare "Reply").
+ */
+export function isReplyLabel(raw) {
+  if (!raw) return false;
+  const t = raw.trim().toLowerCase();
+  if (!t) return false;
+  if (REPLY_WORDS.has(t)) return true;
+  // aria-label form: "reply to X's comment", "répondre à …", etc.
+  // Match a reply word as the first token to avoid false positives.
+  const firstToken = t.split(/[\s'’]/)[0];
+  return REPLY_WORDS.has(firstToken);
+}
+
 export function findReplyButtonIn(el) {
   if (!el) return null;
-  const buttons = el.querySelectorAll('button');
-  const REPLY_WORDS = new Set([
-    'reply', 'répondre', 'antworten', 'responder', 'rispondi', 'beantwoorden',
-    'odpowiedz', 'yanıtla', 'उत्तर दें', 'رد', '回复', '回覆', '返信', '답글'
-  ]);
+  const buttons = el.querySelectorAll('button, [role="button"]');
 
   for (const btn of buttons) {
     // Strategy 1: Check non-hidden leaf spans
     const visibleSpans = btn.querySelectorAll('span:not([aria-hidden="true"])');
     for (const span of visibleSpans) {
-      const text = span.textContent?.trim().toLowerCase();
-      if (text && REPLY_WORDS.has(text)) {
-        return btn;
-      }
+      if (isReplyLabel(span.textContent)) return btn;
     }
     // Strategy 2: Check the full button text (for simple <button>Reply</button>)
-    const btnText = btn.textContent?.trim().toLowerCase();
-    if (btnText && REPLY_WORDS.has(btnText)) {
-      return btn;
-    }
-    // Strategy 3: Check aria-label
-    const ariaLabel = btn.getAttribute('aria-label')?.trim().toLowerCase() || '';
-    if (ariaLabel && REPLY_WORDS.has(ariaLabel)) {
-      return btn;
-    }
+    if (isReplyLabel(btn.textContent)) return btn;
+    // Strategy 3: Check aria-label (handles "Reply to <name>'s comment")
+    if (isReplyLabel(btn.getAttribute('aria-label'))) return btn;
   }
   return null;
 }
@@ -395,12 +416,29 @@ export function findCommentWrapperFromEl(el) {
 
 /**
  * Find the action bar container within a comment element.
- * Locates the Reply button and returns its immediate parent.
+ *
+ * Anchors on the Reply button, then walks UP to the real action-row wrapper.
+ * LinkedIn's 2026 DOM often wraps the Reply button in a tight single-child
+ * span/div that has `overflow:hidden` or a fixed width — appending our button
+ * there makes it invisible (clipped) or zero-width. So we climb to the smallest
+ * ancestor that ALSO contains a sibling action (Like / React) — i.e. the row
+ * that actually holds multiple buttons — and inject there instead.
  */
 export function findActionBarInComment(commentEl) {
   if (!commentEl) return null;
   const replyBtn = findReplyButtonIn(commentEl);
-  if (replyBtn) return replyBtn.parentElement;
+  if (replyBtn) {
+    let current = replyBtn.parentElement;
+    for (let depth = 0; depth < 4 && current && current !== commentEl; depth++) {
+      // A genuine action row holds more than one interactive control
+      // (Reply + Like/React/…). Once we find it, that's our bar.
+      const controls = current.querySelectorAll('button, [role="button"]');
+      if (controls.length >= 2) return current;
+      current = current.parentElement;
+    }
+    // Fallback: the button's direct parent (single-action layouts)
+    return replyBtn.parentElement;
+  }
 
   // Legacy fallback for older LinkedIn DOM
   return commentEl.querySelector(
@@ -442,35 +480,38 @@ export function getCommentElements(postEl) {
   // Most reliable: find every <button> whose text is a localized "Reply",
   // then walk UP to find the smallest ancestor that also has a profile link.
   // This works regardless of obfuscated class names or missing data-testid.
-  const allButtons = postEl ? postEl.querySelectorAll('button') : [];
-  const REPLY_WORDS = new Set([
-    'reply', 'répondre', 'antworten', 'responder', 'rispondi', 'beantwoorden',
-    'odpowiedz', 'yanıtla', 'उत्तर दें', 'رد', '回复', '回覆', '返信', '답글'
-  ]);
+  const allButtons = postEl ? postEl.querySelectorAll('button, [role="button"]') : [];
 
   for (const btn of allButtons) {
-    // Check if this button is a Reply button
+    // Check if this button is a Reply button (span text, full text, or aria-label)
     let isReply = false;
     const visibleSpans = btn.querySelectorAll('span:not([aria-hidden="true"])');
     for (const span of visibleSpans) {
-      if (REPLY_WORDS.has(span.textContent?.trim().toLowerCase())) {
-        isReply = true;
-        break;
-      }
+      if (isReplyLabel(span.textContent)) { isReply = true; break; }
     }
-    if (!isReply && REPLY_WORDS.has(btn.textContent?.trim().toLowerCase())) isReply = true;
-    if (!isReply) {
-      const ariaLabel = btn.getAttribute('aria-label')?.trim().toLowerCase() || '';
-      if (ariaLabel && REPLY_WORDS.has(ariaLabel)) isReply = true;
-    }
+    if (!isReply && isReplyLabel(btn.textContent)) isReply = true;
+    if (!isReply && isReplyLabel(btn.getAttribute('aria-label'))) isReply = true;
     if (!isReply) continue;
 
-    // Walk up to find the smallest ancestor that has a profile link
-    // (which identifies the comment author) — capped at 12 levels up
+    // Walk up to the smallest ancestor that identifies a COMMENT.
+    // Priority: an ancestor containing comment-commentary_ text (uniquely a
+    // comment). Fall back to an ancestor with a profile link. But NEVER return
+    // the post root: if we reach an ancestor holding feed-commentary_ (the
+    // post's own text) without having found a comment wrapper, bail — this
+    // Reply button belongs to the post-level action bar, not a comment.
     let current = btn.parentElement;
     let wrapper = null;
-    for (let i = 0; i < 12 && current && current !== postEl && current !== document.body; i++) {
-      if (current.querySelector('a[href*="/in/"]')) {
+    for (let i = 0; i < 15 && current && current !== postEl && current !== document.body; i++) {
+      // Reached the post root without finding a comment → not a comment.
+      if (current.querySelector('[componentkey^="feed-commentary_"]')) break;
+
+      if (current.querySelector('[componentkey^="comment-commentary_"]')) {
+        wrapper = current;
+        break;
+      }
+      // Secondary: profile link + a comment text box (not the post's).
+      if (current.querySelector('a[href*="/in/"]') &&
+          current.querySelector('[data-testid="expandable-text-box"]')) {
         wrapper = current;
         break;
       }
@@ -610,14 +651,32 @@ export function extractCommentData(commentEl) {
 
 /**
  * Given any element inside a LinkedIn feed, walk up to find the post container.
+ * 2026 DOM: post containers no longer carry data-id="urn:li:activity". The
+ * activity URN now only appears inside the post (analytics hrefs, reaction
+ * facepile data-testid). We walk up looking for an ancestor that contains a
+ * post-commentary anchor (feed-commentary_) — that reliably marks the post root.
  */
 export function findAncestorPost(el) {
-  return el.closest('[data-id*="urn:li:activity"]')
+  // Legacy fast paths (older DOM / detail pages that still use them)
+  const legacy = el.closest('[data-id*="urn:li:activity"]')
     || el.closest('[data-urn*="urn:li:activity"]')
     || el.closest('.feed-shared-update-v2')
     || el.closest('article.update-components-article')
-    || el.closest('.occludable-update')
-    || el.closest('[data-id]');
+    || el.closest('.occludable-update');
+  if (legacy) return legacy;
+
+  // 2026: walk up to the smallest ancestor holding the post's own commentary
+  // (componentkey^="feed-commentary_") — distinct from comment commentary.
+  let current = el.parentElement;
+  for (let i = 0; i < 25 && current && current !== document.body; i++) {
+    if (current.querySelector('[componentkey^="feed-commentary_"]')) return current;
+    // Fallback signal: an analytics/post link carrying the activity URN.
+    if (current.querySelector('a[href*="urn:li:activity"], [data-testid*="urn:li:activity"]')) {
+      return current;
+    }
+    current = current.parentElement;
+  }
+  return null;
 }
 
 

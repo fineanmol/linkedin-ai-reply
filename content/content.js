@@ -11,6 +11,7 @@
 import { refreshMyIdentity, getMyIdentityLocal } from './post-detector.js';
 import { extractComments, extractPostContent } from './comment-extractor.js';
 import { injectReplyButton, closeAllPanels } from './ui-injector.js';
+import { findAncestorPost } from '../utils/dom-helpers.js';
 import { getSettings } from '../utils/storage.js';
 import logger, { setDebugMode } from '../utils/logger.js';
 import { MSG } from '../utils/constants.js';
@@ -28,7 +29,7 @@ const _processedPosts = new Set(); // Stores DOM elements of processed posts
 async function init() {
   try {
     // Unguarded console log so developers and users can see the extension loaded
-    console.log('%c[LIAR] LinkedIn AI Reply Assistant content script loaded v1.0.2', 'color: #6366f1; font-weight: bold;');
+    console.log('%c[LIAR] LinkedIn AI Reply Assistant content script loaded v1.0.5', 'color: #6366f1; font-weight: bold;');
     
     const settings = await getSettings();
     isEnabled = settings.enabled !== false;
@@ -82,18 +83,31 @@ function scanAndProcess() {
     }
   }
 
-  const POST_SELECTOR = '[data-id*="urn:li:activity"], [data-urn*="urn:li:activity"], .feed-shared-update-v2, .occludable-update';
-  const allPosts = document.querySelectorAll(POST_SELECTOR);
+  // LinkedIn's 2026 DOM no longer puts urn:li:activity on the post container's
+  // data-id/data-urn. Post containers have only obfuscated classes now. So we
+  // scan the whole document for comment wrappers directly (via Reply-button /
+  // comment-text anchors) and resolve each comment's post ancestor per-comment.
+  const comments = extractComments(document);
 
-  for (const postEl of allPosts) {
-    // Always processPost — injectReplyButton deduplicates via its own WeakSet,
-    // so we safely catch new comments loaded after the initial scan.
-    if (!_processedPosts.has(postEl)) {
-      _processedPosts.add(postEl);
-      logger.log('scanAndProcess: New post found, processing comments');
+  let totalComments = 0;
+  for (const comment of comments) {
+    try {
+      const postEl = findAncestorPost(comment.element) || document;
+      const postContent = extractPostContent(postEl);
+      injectReplyButton(comment.element, postContent);
+      totalComments++;
+    } catch (e) {
+      console.warn('[LIAR] comment processing threw:', e);
     }
-    processPost(postEl);
   }
+
+  // Always-on health signal. comments==0 → detection anchor failing;
+  // comments>0 & buttons==0 → injection failing.
+  const injected = document.querySelectorAll('.liar-ai-reply-btn').length;
+  console.log(
+    `%c[LIAR] scan: comments=${totalComments} buttons=${injected}`,
+    'color:#0a66c2;font-weight:bold'
+  );
 }
 
 function processPost(postEl) {
@@ -102,6 +116,7 @@ function processPost(postEl) {
   for (const comment of comments) {
     injectReplyButton(comment.element, postContent);
   }
+  return comments.length;
 }
 
 // ─── Debounced MutationObserver ────────────────────────────────────────────

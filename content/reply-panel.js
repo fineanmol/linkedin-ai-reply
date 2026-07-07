@@ -40,7 +40,7 @@ export class ReplyPanel {
     this.currentReply = '';
     this.backend = '';
     this.model = '';
-    this._abortController = null;
+    this._generationActive = false;
     // Current settings snapshot used by the model switcher
     this._settings = null;
     this._ollamaModels = [];
@@ -98,7 +98,7 @@ export class ReplyPanel {
   }
 
   unmount() {
-    this._abortController?.abort();
+    this._cancelInflight();
     if (this._closeDropdownListener) {
       document.removeEventListener('click', this._closeDropdownListener, { capture: true });
     }
@@ -304,8 +304,10 @@ export class ReplyPanel {
   // ─── LLM Request ────────────────────────────────────────────────────────
 
   async _generate(forceRegenerate = false) {
-    this._abortController?.abort();
-    this._abortController = new AbortController();
+    // Cancel any prior in-flight generation for this comment (e.g. on regenerate)
+    // before starting a new one, so the old LLM call is actually aborted.
+    this._cancelInflight();
+    this._generationActive = true;
 
     try {
       const response = await chrome.runtime.sendMessage({
@@ -320,16 +322,39 @@ export class ReplyPanel {
         },
       });
 
+      // If the panel was closed / regenerated while we awaited, drop the result.
+      if (!this._generationActive) return;
+
       if (response?.error) {
         this._renderError(response.error);
       } else {
         this._renderReply(response.reply, response.backend, response.model);
       }
     } catch (e) {
-      if (e.name === 'AbortError') return;
+      if (!this._generationActive) return;
       logger.error('ReplyPanel._generate error:', e);
       this._renderError(e.message || 'Unexpected error. Please try again.');
+    } finally {
+      this._generationActive = false;
     }
+  }
+
+  /**
+   * Tell the background worker to abort the in-flight LLM request for this
+   * comment, and mark the local generation inactive so a late response is
+   * ignored. Fire-and-forget — the worker no-ops if nothing is in flight.
+   */
+  _cancelInflight() {
+    if (!this._generationActive) return;
+    this._generationActive = false;
+    chrome.runtime.sendMessage({
+      type: MSG.CANCEL_REPLY,
+      payload: {
+        commentId: this.opts.commentId,
+        commentText: this.opts.commentText,
+        intent: this.opts.intent,
+      },
+    }).catch(() => {});
   }
 
   _escapeHTML(str) {

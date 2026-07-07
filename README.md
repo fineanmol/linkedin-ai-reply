@@ -1,10 +1,10 @@
 # LinkedIn AI Reply Assistant -  
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Chrome Web Store](https://img.shields.io/badge/Chrome_Web_Store-Publishing_Ready-blue.svg)](https://chromewebstore.google.com/detail/fagknlmdpceocanmlampnkhjfgeaipdj?utm_source=item-share-cb)
 
 
-> A privacy-first Chrome Extension that learns your writing style and generates contextual reply suggestions for comments on your LinkedIn posts — powered by local AI via Ollama.
+> A privacy-first Chrome Extension that learns your writing style and generates contextual reply suggestions for LinkedIn comments — powered by local AI via Ollama (or Gemini).
 
 ![Extension Popup](assets/screenshot-popup.png)
 
@@ -46,7 +46,7 @@ ollama pull llama3.2:3b  # Balanced, ~2 GB RAM
 1. Open Chrome → `chrome://extensions`
 2. Enable **Developer Mode** (top right toggle)
 3. Click **Load unpacked**
-4. Select the `linkedin-ai-reply` folder
+4. Run `npm install && npm run build`, then select the generated `dist/` folder
 
 ### 4. Use it on LinkedIn
 
@@ -96,7 +96,6 @@ linkedin-ai-reply/
 │   └── reply-cache.js     # Request deduplication
 ├── content/
 │   ├── content.js         # Main entry (MutationObserver)
-│   ├── post-detector.js   # "Is this my post?"
 │   ├── comment-extractor.js # DOM comment parsing
 │   ├── intent-classifier.js # Heuristic intent detection
 │   ├── ui-injector.js     # Injects AI Reply button
@@ -138,7 +137,6 @@ Open **Settings** from the popup or `chrome://extensions` → **LinkedIn AI Repl
 
 ### MVP (v1.0) ✅
 - [x] Core extension with MutationObserver
-- [x] Post authorship detection
 - [x] Comment intent classification
 - [x] Reply panel (Shadow DOM)
 - [x] Ollama + Gemini integration
@@ -172,4 +170,4 @@ Open **Settings** from the popup or `chrome://extensions` → **LinkedIn AI Repl
 
 ## 📄 License
 
-MIT License — use freely, modify as needed.
+GNU GPL-3.0 — see [LICENSE](LICENSE). You may use, modify, and redistribute under the terms of the GPL-3.0.

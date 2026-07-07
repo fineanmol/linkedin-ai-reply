@@ -99,7 +99,6 @@ export const STORAGE_KEYS = {
   REPLY_HISTORY: 'liar_reply_history',
   MY_NAME: 'liar_my_name',
   MY_PROFILE_URL: 'liar_my_profile_url',
-  ONBOARDING_DONE: 'liar_onboarding_done',
 };
 
 // ─── Default Settings ──────────────────────────────────────────────────────
@@ -112,7 +111,6 @@ export const DEFAULT_SETTINGS = {
   geminiModel: 'gemini-2.5-flash',
   maxReplyLength: 150,        // words
   temperature: 0.7,
-  streamingEnabled: false,    // Phase 2
   autoLearnFromApproved: true,
   debugMode: false,
 };
@@ -166,6 +164,7 @@ export const OLLAMA_MODELS = [
 // ─── Extension Messages ────────────────────────────────────────────────────
 export const MSG = {
   GENERATE_REPLY:    'GENERATE_REPLY',
+  CANCEL_REPLY:      'CANCEL_REPLY',
   SAVE_STYLE_SAMPLE: 'SAVE_STYLE_SAMPLE',
   GET_SETTINGS:      'GET_SETTINGS',
   SAVE_SETTINGS:     'SAVE_SETTINGS',

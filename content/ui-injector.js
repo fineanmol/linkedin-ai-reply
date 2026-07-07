@@ -89,14 +89,42 @@ export function injectReplyButton(commentEl, postContent) {
     <span>AI Reply</span>
   `;
 
+  // Critical layout styles set inline so LinkedIn's stylesheet / a clipping
+  // parent can't hide the button. Inline styles win the cascade without !important.
+  btn.style.cssText = [
+    'display:inline-flex', 'align-items:center', 'gap:5px',
+    'flex:0 0 auto', 'width:auto', 'height:auto', 'min-width:max-content',
+    'visibility:visible', 'opacity:1', 'overflow:visible',
+    'position:relative', 'z-index:10', 'margin-left:8px',
+    'vertical-align:middle', 'pointer-events:auto',
+  ].join(';');
+
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
     e.preventDefault();
     handleButtonClick(btn, commentEl);
   });
 
-  // Append after the last action in the bar
-  actionBar.appendChild(btn);
+  // Append after the last action in the bar. If the immediate action bar is a
+  // tight/clipping wrapper, climb one level so the button isn't cut off.
+  let target = actionBar;
+  const cs = getComputedStyle(actionBar);
+  if ((cs.overflow === 'hidden' || cs.overflowX === 'hidden') && actionBar.parentElement) {
+    target = actionBar.parentElement;
+  }
+  target.appendChild(btn);
+
+  // Verify the button actually rendered with a nonzero box; if not, log loudly
+  // so field failures are visible without debug mode.
+  requestAnimationFrame(() => {
+    const r = btn.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) {
+      console.warn('[LIAR] button injected but has zero size — parent may be hidden. comment:', comment.id, 'parent:', target.className);
+    } else {
+      console.log(`%c[LIAR] button visible ✓ (${Math.round(r.width)}×${Math.round(r.height)}) for comment ${comment.id}`, 'color:#22c55e');
+    }
+  });
+
   logger.info('injectReplyButton: SUCCESSFULLY injected button for comment', comment.id, '| intent:', intent);
 }
 

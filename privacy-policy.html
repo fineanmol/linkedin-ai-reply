@@ -309,8 +309,9 @@
       <li>Your settings (enabled/disabled, model selection, reply length)</li>
       <li>Your Gemini API key (if you choose to use Gemini)</li>
       <li>Your display name (scraped from LinkedIn for personalisation)</li>
-      <li>Style profile: up to 20 of your approved replies, used to learn your writing style</li>
-      <li>Reply cache: recent generated replies stored temporarily to avoid duplicate API calls</li>
+      <li>Style profile: up to 100 of your approved replies, used to learn your writing style</li>
+      <li>Reply history: up to the 200 most recent generated replies (comment snippet, reply text, and status), shown in the extension's History tab</li>
+      <li>Reply cache: recent generated replies held in memory temporarily to avoid duplicate API calls</li>
     </ul>
     <div class="highlight">
       This data never leaves your device and can be cleared at any time by removing the extension or via Chrome's storage settings.
@@ -331,15 +332,15 @@
       </tr>
       <tr>
         <td><strong>activeTab</strong></td>
-        <td>Read the LinkedIn page you're currently viewing</td>
-      </tr>
-      <tr>
-        <td><strong>scripting</strong></td>
-        <td>Inject the AI Reply button into LinkedIn's comment interface</td>
+        <td>Grants temporary access to the active LinkedIn tab when you interact with the extension</td>
       </tr>
       <tr>
         <td><strong>clipboardWrite</strong></td>
         <td>Copy the generated reply to your clipboard when you click "Copy"</td>
+      </tr>
+      <tr>
+        <td><strong>Host access (linkedin.com)</strong></td>
+        <td>The content script reads the comment DOM and injects the AI Reply button. It never writes through LinkedIn's API.</td>
       </tr>
     </table>
   </section>

@@ -17,6 +17,10 @@ import {
 import { MSG } from '../utils/constants.js';
 import logger from '../utils/logger.js';
 
+// In-flight LLM AbortControllers, keyed by `${cacheId}__${intent}`.
+// Lets CANCEL_REPLY abort a generation that's still running.
+const inFlightControllers = new Map();
+
 // ─── Message Router ────────────────────────────────────────────────────────
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -82,8 +86,14 @@ async function handleMessage(message, sender) {
         maxWords: settings.maxReplyLength,
       });
 
+      // Register an AbortController so a later CANCEL_REPLY can abort this
+      // in-flight LLM call. Keyed the same way as the cache.
+      const controller = new AbortController();
+      const abortKey = `${cacheId}__${intent}`;
+      inFlightControllers.set(abortKey, controller);
+
       // Fire request (deduplicated via cache)
-      const requestPromise = llmRouter.chat(messages)
+      const requestPromise = llmRouter.chat(messages, controller.signal)
         .then(result => {
           replyCache.set(cacheId, intent, result);
           // Save to history
@@ -98,16 +108,43 @@ async function handleMessage(message, sender) {
             status: 'generated',
           }).catch(() => {});
           return { reply: result.text, backend: result.backend, model: result.model };
+        })
+        .finally(() => {
+          inFlightControllers.delete(abortKey);
         });
 
       replyCache.setPending(cacheId, intent, requestPromise);
       return requestPromise;
     }
 
+    // ─── Cancel an in-flight Reply generation ───────────────────────────────
+    case MSG.CANCEL_REPLY: {
+      const { commentId, commentText, intent } = payload;
+      const textHash = commentText
+        ? btoa(encodeURIComponent(commentText.slice(0, 30))).replace(/[^a-zA-Z0-9]/g, '').slice(0, 8)
+        : 'empty';
+      const abortKey = `${commentId}_${textHash}__${intent}`;
+      const controller = inFlightControllers.get(abortKey);
+      if (controller) {
+        controller.abort();
+        inFlightControllers.delete(abortKey);
+        replyCache.invalidate(`${commentId}_${textHash}`, intent);
+        logger.info('[CANCEL_REPLY] aborted in-flight request:', abortKey);
+        return { cancelled: true };
+      }
+      return { cancelled: false };
+    }
+
     // ─── Save Style Sample (Approved Reply) ─────────────────────────────
     case MSG.SAVE_STYLE_SAMPLE: {
       const { text, intent, commentId } = payload;
-      await learnFromApprovedReply({ text, intent });
+
+      // Respect the user's "auto-learn from approved replies" setting. When it's
+      // off, we must NOT harvest the reply into the style profile (privacy).
+      const learnSettings = await getSettings();
+      if (learnSettings.autoLearnFromApproved !== false) {
+        await learnFromApprovedReply({ text, intent });
+      }
 
       // Update history entry status
       const history = await getReplyHistory();
@@ -125,8 +162,10 @@ async function handleMessage(message, sender) {
 
     case MSG.SAVE_SETTINGS:
       await saveSettings(payload);
-      // Broadcast settings change to all LinkedIn tabs to keep them in sync
-      chrome.tabs.query({ url: 'https://www.linkedin.com/*' }).then(tabs => {
+      // Broadcast settings change to all LinkedIn tabs to keep them in sync.
+      // Match the same patterns the manifest declares (all linkedin.com subdomains),
+      // not just www — otherwise tabs on other subdomains never get the update.
+      chrome.tabs.query({ url: ['https://*.linkedin.com/*', 'https://linkedin.com/*'] }).then(tabs => {
         for (const tab of tabs) {
           if (tab.id) {
             chrome.tabs.sendMessage(tab.id, {
