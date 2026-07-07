@@ -4,7 +4,7 @@
  * Centralizing these makes it easy to update when LinkedIn changes their markup.
  */
 
-import { SELECTORS, DETECTION, REPLY_WORDS as REPLY_WORDS_LIST } from './constants.js';
+import { SELECTORS, DETECTION, REPLY_WORDS as REPLY_WORDS_LIST, PROMOTED_WORDS } from './constants.js';
 import logger from './logger.js';
 
 // Set form of the localized "Reply" words (fast lookup), sourced from the
@@ -12,7 +12,7 @@ import logger from './logger.js';
 const REPLY_WORDS = new Set(REPLY_WORDS_LIST);
 
 // Join a DETECTION fallback list into a single querySelector string.
-function sel(list) {
+export function sel(list) {
   return list.join(', ');
 }
 
@@ -167,14 +167,17 @@ export async function expandSeeMore(element) {
 export function extractNameFromPhotoAlt(alt) {
   if (!alt) return null;
   let cleaned = alt.trim();
+  // Note: LinkedIn uses the CURLY apostrophe (U+2019 ’) in "View X’s profile",
+  // not the straight one. Match BOTH ['’] everywhere.
   const patterns = [
     /Add a comment as (.+)/i,
     /Comment as (.+)/i,
     /Reply as (.+)/i,
     /Post as (.+)/i,
     /Post update as (.+)/i,
-    /View (.+?)'s profile/i,
-    /(.+?)'s profile picture/i,
+    /View (.+?)['’]s profile/i,
+    /(.+?)['’]s profile picture/i,
+    /(.+?)['’]s profile/i,
     /Photo of (.+?)/i,
     /Picture of (.+?)/i
   ];
@@ -191,7 +194,7 @@ export function extractNameFromPhotoAlt(alt) {
                    .replace(/comment as/i, '')
                    .replace(/reply as/i, '')
                    .replace(/post as/i, '')
-                   .replace(/'s/g, '')
+                   .replace(/['’]s\b/g, '')
                    .trim();
   return cleaned || null;
 }
@@ -329,6 +332,157 @@ export function getPostContent(postEl) {
     || qs('[data-test-id="main-feed-activity-card__commentary"]', postEl)
     || qs('.update-components-text', postEl);
   return contentEl ? extractText(contentEl) : '';
+}
+
+// ─── Feed-Post Metadata (engagement queue) ──────────────────────────────────
+// These handle the messy realities found in the live 2026 DOM:
+//  - the FIRST a[href*="/in/"] in a post can be a REACTOR avatar, not the author
+//  - reaction counts bleed together when read from the whole subtree
+//  - ads must be skipped
+
+/**
+ * Get the post author's { name, profilePath } from the ACTOR block specifically
+ * (not just the first profile link, which may belong to a reactor facepile).
+ * Falls back to image alt ("View X's profile") cleaned via extractNameFromPhotoAlt.
+ */
+export function getPostActor(postEl) {
+  let name = null;
+  let profilePath = null;
+  let headline = null;
+
+  // ── Primary (2026): the actor's accessible label ──────────────────────────
+  // The author block carries an aria-label like "Andrew Park Verified Profile
+  // 3rd+" or "Jane Doe • 2nd". This is the most reliable author signal now
+  // (the legacy .update-components-actor class is gone). Take the text BEFORE
+  // the "Verified Profile" / connection-degree / bullet marker.
+  for (const el of postEl.querySelectorAll('[aria-label]')) {
+    const al = el.getAttribute('aria-label') || '';
+    const m = al.match(/^(.+?)\s+(?:Verified Profile|Premium Profile|•|·|,|\b(?:1st|2nd|3rd)\b)/i);
+    if (m) {
+      const candidate = m[1].trim();
+      if (candidate && candidate.length >= 2 && candidate.length <= 60 && !candidate.includes('|')) {
+        name = candidate;
+        break;
+      }
+    }
+  }
+
+  // ── Fallback: an actor profile link's image alt ("View X's profile") ──────
+  // Prefer the link that is NOT the logged-in user (skip the composer/nav avatar).
+  const links = [...postEl.querySelectorAll('a[href*="/in/"]')];
+  for (const link of links) {
+    const alt = link.querySelector('img[alt]')?.getAttribute('alt');
+    const fromAlt = extractNameFromPhotoAlt(alt);
+    if (!name && fromAlt && fromAlt.length <= 60 && fromAlt.toLowerCase() !== 'me') {
+      name = fromAlt;
+    }
+    if (!profilePath) {
+      try { profilePath = new URL(link.href).pathname.replace(/\/$/, ''); } catch { /* ignore */ }
+    }
+    if (name && profilePath) break;
+  }
+
+  // ── Headline (best-effort): actor sub-description line ─────────────────────
+  // Look for a short line near the top that reads like a role/company, not a
+  // timestamp or the name itself.
+  const candidates = [...postEl.querySelectorAll('span[aria-hidden="true"], p')]
+    .slice(0, 12)
+    .map(e => e.textContent?.trim())
+    .filter(t => t && t !== name && t.length > 5 && t.length <= 140);
+  headline = candidates.find(t =>
+    !/^\d+\s*(h|d|w|mo|min|sec|hour|day|week)/i.test(t) &&
+    !/^(•|·|reactions?|comments?)/i.test(t) &&
+    /[a-z]/i.test(t)
+  ) || null;
+
+  return { name, profilePath, headline };
+}
+
+/**
+ * Best-effort reaction count for a post. Returns a NUMBER or null.
+ * Scopes to the social-counts region and matches a clean "N reactions" token,
+ * returning null when the value looks corrupted (concatenated) rather than
+ * guessing — engagement is a SOFT signal, correctness > coverage.
+ */
+export function getPostEngagementApprox(postEl) {
+  const region = qs(sel(DETECTION.SOCIAL_COUNTS), postEl) || postEl;
+  // Look for an element whose ENTIRE trimmed text is exactly "N reaction(s)".
+  const els = region.querySelectorAll('span, a, div');
+  for (const el of els) {
+    const t = el.textContent?.trim() || '';
+    const m = t.match(/^([\d,]{1,9})\s+reactions?$/i);
+    if (m) {
+      const n = parseInt(m[1].replace(/,/g, ''), 10);
+      // Sanity cap: reactions are only a soft tiebreaker. Feed posts rarely
+      // exceed ~2M reactions; larger values are almost certainly concatenated
+      // subtree noise → discard rather than trust a wrong number.
+      if (Number.isFinite(n) && n >= 0 && n < 2_000_000) return n;
+    }
+  }
+  return null;
+}
+
+/**
+ * Is this a promoted/sponsored post (an ad)? Ads make poor engagement targets.
+ */
+export function isPromotedPost(postEl) {
+  // Check the actor sub-description / top of the post only (cheap, avoids the
+  // whole subtree). Promoted marker is near the author.
+  const head = (qs(sel(DETECTION.POST_ACTOR), postEl)?.textContent || postEl.textContent || '')
+    .slice(0, 220).toLowerCase();
+  return PROMOTED_WORDS.some(w => head.includes(w));
+}
+
+/**
+ * Extract the post's activity URN (stable id) from any href/data-testid that
+ * carries it. Returns e.g. "urn:li:activity:7478341703335309312" or null.
+ */
+export function getPostUrn(postEl) {
+  for (const s of DETECTION.ACTIVITY_URN) {
+    const el = qs(s, postEl);
+    const hay = el?.getAttribute('href') || el?.getAttribute('data-testid') || '';
+    const m = hay.match(/urn:li:activity:(\d+)/);
+    if (m) return `urn:li:activity:${m[1]}`;
+  }
+  // Fallback: scan a few hrefs.
+  for (const a of postEl.querySelectorAll('a[href]')) {
+    const m = a.getAttribute('href').match(/urn:li:activity:(\d+)|activity-(\d+)-/);
+    if (m) return `urn:li:activity:${m[1] || m[2]}`;
+  }
+  return null;
+}
+
+/**
+ * A shareable permalink to the post, if derivable from a URN.
+ */
+export function getPostPermalink(postEl) {
+  const urn = getPostUrn(postEl);
+  return urn ? `https://www.linkedin.com/feed/update/${urn}/` : null;
+}
+
+/**
+ * Has the logged-in user already commented on this post?
+ * Scans the post's own comment blocks for a comment authored by `myIdentity`.
+ */
+export function didICommentOnPost(postEl, myIdentity) {
+  if (!myIdentity?.name && !myIdentity?.profilePath) return false;
+  const myName = (myIdentity.name || '').toLowerCase().trim();
+  const myPath = (myIdentity.profilePath || '').toLowerCase().replace(/\/$/, '');
+  const commentBlocks = qsAll(sel(DETECTION.COMMENT_COMMENTARY), postEl);
+  for (const block of commentBlocks) {
+    const wrapper = findCommentWrapperFromEl(block) || block.parentElement;
+    if (!wrapper) continue;
+    const link = wrapper.querySelector('a[href*="/in/"]');
+    if (link) {
+      try {
+        const path = new URL(link.href).pathname.replace(/\/$/, '').toLowerCase();
+        if (myPath && path === myPath) return true;
+      } catch { /* ignore */ }
+      const nm = (link.querySelector('span[aria-hidden="true"]')?.textContent || '').toLowerCase().trim();
+      if (myName && nm && nm === myName) return true;
+    }
+  }
+  return false;
 }
 
 // ─── Comment Utilities ─────────────────────────────────────────────────────
@@ -703,6 +857,31 @@ export function findAncestorPost(el) {
     current = current.parentElement;
   }
   return null;
+}
+
+/**
+ * Resolve the INDIVIDUAL feed-post container for a given post-commentary body.
+ *
+ * The feed nests each post inside a shared `role="list"` wrapper that contains
+ * ALL posts' commentary. Walking up until "any activity URN" overshoots into
+ * that shared wrapper, which then makes every post resolve to the first post's
+ * author. Instead we climb while the ancestor still contains EXACTLY ONE
+ * post-commentary node (its own), and return the LAST such ancestor — the true
+ * per-post boundary. Anchor-name-independent and robust to class churn.
+ * @param {Element} bodyEl - a DETECTION.POST_COMMENTARY element
+ */
+export function findFeedPostRoot(bodyEl) {
+  if (!bodyEl) return null;
+  const postCommentary = sel(DETECTION.POST_COMMENTARY);
+  let last = bodyEl;
+  let current = bodyEl.parentElement;
+  for (let i = 0; i < 25 && current && current !== document.body; i++) {
+    const count = current.querySelectorAll(postCommentary).length;
+    if (count !== 1) break;      // reached the shared feed container → stop
+    last = current;
+    current = current.parentElement;
+  }
+  return last;
 }
 
 

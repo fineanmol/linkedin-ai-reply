@@ -44,6 +44,7 @@ function initTabs() {
 
       if (tab === 'history') loadHistory();
       if (tab === 'style') loadStyleProfile();
+      if (tab === 'queue') loadQueue();
     });
   });
 }
@@ -312,6 +313,113 @@ async function initAdvancedTab(settings) {
   });
 }
 
+// ─── Engagement Queue Tab ────────────────────────────────────────────────────
+
+async function initQueueTab(settings) {
+  const topicsInput = document.getElementById('topics');
+  if (topicsInput) topicsInput.value = settings.topics || '';
+
+  document.getElementById('save-topics')?.addEventListener('click', async () => {
+    await sendMsg(MSG.SAVE_SETTINGS, { topics: document.getElementById('topics').value.trim() });
+    showToast('✓ Topics saved!');
+  });
+
+  document.getElementById('refresh-queue')?.addEventListener('click', loadQueue);
+
+  document.getElementById('clear-queue')?.addEventListener('click', async () => {
+    if (!confirm('Clear the engagement queue?')) return;
+    await sendMsg(MSG.CLEAR_QUEUE);
+    showToast('Queue cleared.');
+    loadQueue();
+  });
+}
+
+async function loadQueue() {
+  const resp = await sendMsg(MSG.GET_QUEUE);
+  const queue = (resp?.queue || []).filter(q => q.status !== 'skipped');
+  const listEl = document.getElementById('queue-list');
+  const countEl = document.getElementById('queue-count');
+  countEl.textContent = `${queue.length} ${queue.length === 1 ? 'item' : 'items'}`;
+
+  if (queue.length === 0) {
+    listEl.innerHTML = '<div class="empty-state">Queue is empty. Open your LinkedIn feed, click the extension, and hit <b>Build today\'s engagement queue</b>.</div>';
+    return;
+  }
+
+  listEl.innerHTML = queue.map(q => {
+    const rel = q.relevance != null ? `${Math.round(q.relevance * 100)}% match` : '';
+    const done = q.status === 'done';
+    return `
+    <div class="history-item" data-id="${q.id}" style="${done ? 'opacity:.55;' : ''}">
+      <div class="history-item-meta">
+        <span class="history-status ${done ? 'approved' : 'generated'}">${done ? '✓ Done' : 'Queued'}</span>
+        <span>${escapeHTML(q.authorName || 'Someone')}</span>
+        ${q.authorHeadline ? `<span>·</span><span>${escapeHTML(q.authorHeadline.slice(0, 50))}</span>` : ''}
+        ${rel ? `<span>·</span><span>${rel}</span>` : ''}
+      </div>
+      <div class="history-comment">💬 "${escapeHTML((q.postText || '').slice(0, 160))}${(q.postText || '').length > 160 ? '…' : ''}"</div>
+      ${q.whyEngage ? `<div class="form-hint" style="margin:4px 0;">Why: ${escapeHTML(q.whyEngage)}</div>` : ''}
+      <textarea class="form-input form-textarea q-draft" rows="3" data-id="${q.id}" placeholder="Click “Draft reply” to generate…">${escapeHTML(q.draftReply || '')}</textarea>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+        <button class="btn-save q-draft-btn" data-id="${q.id}" style="padding:6px 12px;">${q.draftReply ? '↻ Regenerate' : '✨ Draft reply'}</button>
+        <button class="btn-save q-open-btn" data-id="${q.id}" data-url="${q.permalink || ''}" style="padding:6px 12px;">📋 Copy & open post</button>
+        <button class="btn-danger-sm q-skip-btn" data-id="${q.id}">Skip</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Wire per-row actions
+  listEl.querySelectorAll('.q-draft-btn').forEach(b =>
+    b.addEventListener('click', () => draftForItem(b.dataset.id)));
+  listEl.querySelectorAll('.q-open-btn').forEach(b =>
+    b.addEventListener('click', () => copyAndOpen(b.dataset.id, b.dataset.url)));
+  listEl.querySelectorAll('.q-skip-btn').forEach(b =>
+    b.addEventListener('click', () => skipItem(b.dataset.id)));
+  // Persist manual edits to drafts
+  listEl.querySelectorAll('.q-draft').forEach(t =>
+    t.addEventListener('change', () => sendMsg(MSG.UPDATE_QUEUE_ITEM, { id: t.dataset.id, patch: { draftReply: t.value } })));
+}
+
+async function draftForItem(id) {
+  const resp = await sendMsg(MSG.GET_QUEUE);
+  const item = (resp?.queue || []).find(q => q.id === id);
+  if (!item) return;
+  const ta = document.querySelector(`.q-draft[data-id="${id}"]`);
+  const btn = document.querySelector(`.q-draft-btn[data-id="${id}"]`);
+  if (ta) ta.value = 'Generating…';
+  if (btn) btn.disabled = true;
+  // Reuse the existing GENERATE_REPLY pipeline: treat the POST as the thing
+  // being commented on, with the POST_COMMENT intent.
+  const gen = await sendMsg(MSG.GENERATE_REPLY, {
+    commentId: `queue-${id}`,
+    commentText: item.postText,
+    authorName: item.authorName,
+    postContent: item.postText,
+    intent: 'post_comment',
+    forceRegenerate: !!item.draftReply,
+  });
+  const text = gen?.reply || `(couldn't generate: ${gen?.error || 'unknown'})`;
+  if (ta) ta.value = text;
+  if (btn) { btn.disabled = false; btn.textContent = '↻ Regenerate'; }
+  await sendMsg(MSG.UPDATE_QUEUE_ITEM, { id, patch: { draftReply: text } });
+}
+
+async function copyAndOpen(id, url) {
+  const ta = document.querySelector(`.q-draft[data-id="${id}"]`);
+  const text = ta?.value?.trim();
+  if (text) {
+    try { await navigator.clipboard.writeText(text); showToast('Draft copied — paste it on LinkedIn.'); } catch { /* ignore */ }
+  }
+  await sendMsg(MSG.UPDATE_QUEUE_ITEM, { id, patch: { status: 'done' } });
+  if (url) window.open(url, '_blank', 'noopener');
+  loadQueue();
+}
+
+async function skipItem(id) {
+  await sendMsg(MSG.UPDATE_QUEUE_ITEM, { id, patch: { status: 'skipped' } });
+  loadQueue();
+}
+
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
 function escapeHTML(str) {
@@ -332,8 +440,10 @@ async function main() {
     initLLMTab(settings),
     initStyleTab(),
     initAdvancedTab(settings),
+    initQueueTab(settings),
     checkSidebarStatus(),
     loadStyleProfile(),
+    loadQueue(),
   ]);
 }
 

@@ -19,6 +19,7 @@ const INTENT_INSTRUCTIONS = {
   [INTENTS.TECHNICAL]:    `Give one sharp, specific technical take. Be precise. No fluff.`,
   [INTENTS.NETWORKING]:   `Be warm and brief. One genuine sentence is enough.`,
   [INTENTS.GENERAL]:      `Say something real and direct. One or two sentences max.`,
+  [INTENTS.POST_COMMENT]: `Leave a genuine top-level comment on this post. Add a specific insight, ask a sharp question, or share a relevant experience — something that shows you actually read it. Never generic praise.`,
 };
 
 // ─── System Prompt ─────────────────────────────────────────────────────────
@@ -85,6 +86,65 @@ ${commentText}
 HOW TO REPLY: ${intentInstruction}
 
 Write the reply now (short, direct, human):`;
+}
+
+// ─── Relevance Scoring (engagement queue) ───────────────────────────────────
+
+/**
+ * Build messages that ask the LLM to score a batch of feed posts for how worth
+ * engaging on they are, given the user's niche topics. Returns strict JSON so
+ * the caller can parse it deterministically.
+ * @param {string} topics - comma-separated niche topics
+ * @param {Array<{urn,authorName,text}>} posts
+ */
+export function buildScoringMessages({ topics, posts }) {
+  const topicLine = topics?.trim()
+    ? `The user's niche / topics of interest: ${topics.trim()}.`
+    : `The user has not specified topics; judge general professional relevance and whether the post invites a thoughtful comment.`;
+
+  const numbered = posts.map((p, i) =>
+    `[${i}] author: ${p.authorName || 'unknown'}\n"""${(p.text || '').slice(0, 500)}"""`
+  ).join('\n\n');
+
+  const system = `You help a LinkedIn user decide which posts are worth commenting on to grow their network authentically. ${topicLine}
+
+For each post, judge:
+- relevance to the user's topics (0.0-1.0)
+- whether a genuine, non-generic comment is possible
+
+Output ONLY a JSON array, one object per post, in the same order:
+[{"i":0,"relevance":0.0,"why":"<=8 words on why to engage or skip"}]
+No prose, no markdown, no code fences. Just the JSON array.`;
+
+  return [
+    { role: 'system', content: system },
+    { role: 'user', content: `Posts:\n\n${numbered}\n\nReturn the JSON array now.` },
+  ];
+}
+
+/**
+ * Parse the LLM's scoring response into [{i, relevance, why}].
+ * Tolerant of code fences / stray prose around the JSON.
+ */
+export function parseScoringResponse(raw, count) {
+  if (!raw) return [];
+  let t = raw.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+  const start = t.indexOf('[');
+  const end = t.lastIndexOf(']');
+  if (start === -1 || end === -1) return [];
+  try {
+    const arr = JSON.parse(t.slice(start, end + 1));
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter(o => o && typeof o.i === 'number' && o.i >= 0 && o.i < count)
+      .map(o => ({
+        i: o.i,
+        relevance: Math.max(0, Math.min(1, Number(o.relevance) || 0)),
+        why: String(o.why || '').slice(0, 80),
+      }));
+  } catch {
+    return [];
+  }
 }
 
 // ─── Full Prompt Builder ────────────────────────────────────────────────────

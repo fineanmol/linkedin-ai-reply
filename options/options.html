@@ -26,7 +26,8 @@
       </div>
 
       <ul class="nav-list">
-        <li><a href="#llm" class="nav-link active" data-tab="llm">🤖 LLM Backend</a></li>
+        <li><a href="#queue" class="nav-link active" data-tab="queue">🚀 Engagement Queue</a></li>
+        <li><a href="#llm" class="nav-link" data-tab="llm">🤖 LLM Backend</a></li>
         <li><a href="#style" class="nav-link" data-tab="style">✍️ Style Profile</a></li>
         <li><a href="#history" class="nav-link" data-tab="history">📋 Reply History</a></li>
         <li><a href="#advanced" class="nav-link" data-tab="advanced">⚙️ Advanced</a></li>
@@ -43,8 +44,38 @@
     <!-- Main Content -->
     <main class="content">
 
+      <!-- ── Engagement Queue Tab ────────────────────────────────────── -->
+      <section class="tab-pane active" id="tab-queue">
+        <div class="tab-header">
+          <h1>Engagement Queue</h1>
+          <p class="tab-desc">Your daily list of relevant posts worth commenting on, with an AI-drafted comment for each. You review, edit, and post manually on LinkedIn — nothing is ever posted automatically.</p>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Your Topics</div>
+          <div class="form-group">
+            <label class="form-label" for="topics">Niche / interests (comma-separated)</label>
+            <input class="form-input" type="text" id="topics" placeholder="e.g. system design, AI, backend engineering, developer career">
+            <div class="form-hint">Used to score which feed posts are worth engaging on. Seeded from your recent posts; edit anytime.</div>
+          </div>
+          <button class="btn-save" id="save-topics">Save Topics</button>
+        </div>
+
+        <div class="history-toolbar">
+          <span id="queue-count">0 items</span>
+          <div style="display:flex; gap:8px;">
+            <button class="btn-save" id="refresh-queue" style="padding:6px 12px;">↻ Refresh</button>
+            <button class="btn-danger-sm" id="clear-queue">Clear Queue</button>
+          </div>
+        </div>
+
+        <div class="history-list" id="queue-list">
+          <div class="empty-state">Queue is empty. Open your LinkedIn feed, click the extension, and hit <b>Build today's engagement queue</b>.</div>
+        </div>
+      </section>
+
       <!-- ── LLM Backend Tab ─────────────────────────────────────────── -->
-      <section class="tab-pane active" id="tab-llm">
+      <section class="tab-pane" id="tab-llm">
         <div class="tab-header">
           <h1>LLM Backend</h1>
           <p class="tab-desc">Configure your AI model. All local inference stays on your device — nothing is sent externally unless you enable the Gemini fallback.</p>

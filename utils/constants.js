@@ -119,7 +119,24 @@ export const DETECTION = {
     'article.update-components-article',
     '.occludable-update',
   ],
+  // The post's AUTHOR actor block (name/headline). NOT just any /in/ link —
+  // reactor avatars are also /in/ links. Ordered fallbacks.
+  POST_ACTOR: [
+    '.update-components-actor__meta',
+    '.update-components-actor',
+    '[class*="update-components-actor"]',
+  ],
+  // Best-effort social counts region (reactions/comments). Extraction is
+  // approximate — see getPostEngagementApprox(). Ordered fallbacks.
+  SOCIAL_COUNTS: [
+    '.social-details-social-counts',
+    '[class*="social-details-social-counts"]',
+    '[class*="social-counts"]',
+  ],
 };
+
+// Localized "Promoted"/ad markers — posts carrying these are skipped as targets.
+export const PROMOTED_WORDS = ['promoted', 'anzeige', 'gesponsert', 'sponsored', 'promoted by'];
 
 // Localized "Reply" action words — the text-based anchor for the comment
 // action bar. Kept here so all detection paths share ONE list.
@@ -136,6 +153,7 @@ export const STORAGE_KEYS = {
   REPLY_HISTORY: 'liar_reply_history',
   MY_NAME: 'liar_my_name',
   MY_PROFILE_URL: 'liar_my_profile_url',
+  ENGAGEMENT_QUEUE: 'liar_engagement_queue',
 };
 
 // ─── Default Settings ──────────────────────────────────────────────────────
@@ -150,6 +168,11 @@ export const DEFAULT_SETTINGS = {
   temperature: 0.7,
   autoLearnFromApproved: true,
   debugMode: false,
+  // Comma-separated niche topics used to score which feed posts are worth
+  // engaging on. Seeded from the user's recent posts, user-editable in Options.
+  topics: '',
+  // Max items in a freshly built engagement queue.
+  queueSize: 12,
 };
 
 // ─── Intent Labels ─────────────────────────────────────────────────────────
@@ -161,6 +184,9 @@ export const INTENTS = {
   TECHNICAL: 'technical',
   NETWORKING: 'networking',
   GENERAL: 'general',
+  // A top-level comment ON a post (not a reply to someone's comment) —
+  // used by the engagement queue.
+  POST_COMMENT: 'post_comment',
 };
 
 // ─── Intent Display Config ─────────────────────────────────────────────────
@@ -172,6 +198,7 @@ export const INTENT_CONFIG = {
   [INTENTS.TECHNICAL]:    { label: 'Technical',    emoji: '⚙️', color: '#8b5cf6' },
   [INTENTS.NETWORKING]:   { label: 'Networking',   emoji: '🤝', color: '#06b6d4' },
   [INTENTS.GENERAL]:      { label: 'General',      emoji: '💬', color: '#64748b' },
+  [INTENTS.POST_COMMENT]: { label: 'Post comment', emoji: '📝', color: '#5cc3e8' },
 };
 
 // ─── Style Profile Defaults ────────────────────────────────────────────────
@@ -210,6 +237,13 @@ export const MSG = {
   CHECK_OLLAMA:      'CHECK_OLLAMA',
   GET_OLLAMA_MODELS: 'GET_OLLAMA_MODELS',
   PING:              'PING',
+  // ── Engagement queue ──
+  SCORE_TARGETS:     'SCORE_TARGETS',      // payload: { posts:[{urn,authorName,text,...}], topics } → { scored:[{urn,relevance,whyEngage}] }
+  BUILD_QUEUE:       'BUILD_QUEUE',        // content→bg: full pipeline for a scanned post set → { added }
+  GET_QUEUE:         'GET_QUEUE',          // → queue array
+  UPDATE_QUEUE_ITEM: 'UPDATE_QUEUE_ITEM',  // payload: { id, patch } → { success }
+  CLEAR_QUEUE:       'CLEAR_QUEUE',        // → { success }
+  REQUEST_BUILD_QUEUE:'REQUEST_BUILD_QUEUE',// popup/options→content: trigger a feed scan in the active tab
 };
 
 // ─── UI Constants ──────────────────────────────────────────────────────────

@@ -103,6 +103,56 @@ export async function clearReplyHistory() {
   await storageRemove(STORAGE_KEYS.REPLY_HISTORY);
 }
 
+// ─── Engagement Queue ────────────────────────────────────────────────────────
+// Items shape: { id, urn, authorName, authorHeadline, postText, permalink,
+//   draftReply, relevance, whyEngage, status: 'queued'|'done'|'skipped', timestamp }
+
+export async function getEngagementQueue() {
+  const stored = await storageGet(STORAGE_KEYS.ENGAGEMENT_QUEUE);
+  return stored || [];
+}
+
+export async function saveEngagementQueue(items) {
+  await storageSet(STORAGE_KEYS.ENGAGEMENT_QUEUE, items || []);
+}
+
+/**
+ * Merge new items into the queue, de-duplicating by urn (or permalink).
+ * Existing items are preserved; only genuinely new targets are added.
+ * Returns the number of items added.
+ */
+export async function addToEngagementQueue(newItems) {
+  const queue = await getEngagementQueue();
+  const seen = new Set(queue.map(q => q.urn || q.permalink));
+  let added = 0;
+  for (const item of newItems) {
+    const key = item.urn || item.permalink;
+    if (key && seen.has(key)) continue;
+    seen.add(key);
+    queue.push({
+      id: crypto.randomUUID(),
+      timestamp: Date.now(),
+      status: 'queued',
+      ...item,
+    });
+    added++;
+  }
+  // Newest-first, cap at 100 to bound storage.
+  queue.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+  await saveEngagementQueue(queue.slice(0, 100));
+  return added;
+}
+
+export async function updateEngagementQueueItem(id, patch) {
+  const queue = await getEngagementQueue();
+  const updated = queue.map(q => (q.id === id ? { ...q, ...patch } : q));
+  await saveEngagementQueue(updated);
+}
+
+export async function clearEngagementQueue() {
+  await storageRemove(STORAGE_KEYS.ENGAGEMENT_QUEUE);
+}
+
 // ─── Identity ──────────────────────────────────────────────────────────────
 
 export async function getMyIdentity() {

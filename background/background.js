@@ -6,13 +6,14 @@
 
 import { llmRouter } from './llm-router.js';
 import { replyCache } from './reply-cache.js';
-import { buildMessages } from './prompt-builder.js';
+import { buildMessages, buildScoringMessages, parseScoringResponse } from './prompt-builder.js';
 import { getProfileWithContext, learnFromApprovedReply, saveManualExamples } from './style-profiler.js';
 import {
   getSettings, saveSettings,
   getStyleProfile, saveStyleProfile,
   getReplyHistory, addToReplyHistory,
   getMyIdentity, saveMyIdentity,
+  getEngagementQueue, addToEngagementQueue, updateEngagementQueueItem, clearEngagementQueue,
 } from '../utils/storage.js';
 import { MSG } from '../utils/constants.js';
 import logger from '../utils/logger.js';
@@ -207,6 +208,80 @@ async function handleMessage(message, sender) {
 
     case 'GET_IDENTITY':
       return getMyIdentity();
+
+    // ─── Engagement Queue ───────────────────────────────────────────────────
+    // Score a batch of extracted feed posts for relevance to the user's topics.
+    case MSG.SCORE_TARGETS: {
+      const { posts = [], topics = '' } = payload;
+      if (!posts.length) return { scored: [] };
+      try {
+        const messages = buildScoringMessages({ topics, posts });
+        const { text } = await llmRouter.chat(messages);
+        const scored = parseScoringResponse(text, posts.length);
+        return { scored };
+      } catch (e) {
+        logger.error('[SCORE_TARGETS] failed:', e.message);
+        return { scored: [], error: e.message };
+      }
+    }
+
+    // Full build: score the posts, rank, cap, and add the best to the queue.
+    // Drafts are generated lazily later (on open), not here.
+    case MSG.BUILD_QUEUE: {
+      const { posts = [] } = payload;
+      const settings = await getSettings();
+      // Pre-filter: drop ads, own posts (already excluded by extractor), and
+      // posts the user already commented on.
+      const candidates = posts.filter(p => !p.isPromoted && !p.alreadyCommentedByMe && (p.text || '').length >= 20);
+      if (!candidates.length) return { added: 0, scanned: posts.length };
+
+      let scored = [];
+      try {
+        const messages = buildScoringMessages({ topics: settings.topics, posts: candidates });
+        const { text } = await llmRouter.chat(messages);
+        scored = parseScoringResponse(text, candidates.length);
+      } catch (e) {
+        logger.warn('[BUILD_QUEUE] scoring failed, falling back to reactions order:', e.message);
+      }
+
+      const relById = new Map(scored.map(s => [s.i, s]));
+      const ranked = candidates
+        .map((p, i) => ({
+          ...p,
+          relevance: relById.get(i)?.relevance ?? 0,
+          whyEngage: relById.get(i)?.why || '',
+        }))
+        // Rank: relevance desc, then reactions (soft) desc.
+        .sort((a, b) => (b.relevance - a.relevance) || ((b.reactionsApprox || 0) - (a.reactionsApprox || 0)))
+        // If scoring worked, keep only relevance >= 0.3; else keep all.
+        .filter(p => (scored.length ? p.relevance >= 0.3 : true))
+        .slice(0, settings.queueSize || 12)
+        .map(p => ({
+          urn: p.urn,
+          authorName: p.authorName,
+          authorHeadline: p.authorHeadline,
+          postText: (p.text || '').slice(0, 1000),
+          permalink: p.permalink,
+          relevance: p.relevance,
+          whyEngage: p.whyEngage,
+          draftReply: '',        // generated lazily on open
+        }));
+
+      const added = await addToEngagementQueue(ranked);
+      logger.info(`[BUILD_QUEUE] scanned=${posts.length} candidates=${candidates.length} added=${added}`);
+      return { added, scanned: posts.length, candidates: candidates.length };
+    }
+
+    case MSG.GET_QUEUE:
+      return { queue: await getEngagementQueue() };
+
+    case MSG.UPDATE_QUEUE_ITEM:
+      await updateEngagementQueueItem(payload.id, payload.patch || {});
+      return { success: true };
+
+    case MSG.CLEAR_QUEUE:
+      await clearEngagementQueue();
+      return { success: true };
 
     // ─── Ping ─────────────────────────────────────────────────────────────
     case MSG.PING:

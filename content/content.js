@@ -10,6 +10,7 @@
 
 import { refreshMyIdentity, getMyIdentityLocal } from './post-detector.js';
 import { extractComments, extractPostContent } from './comment-extractor.js';
+import { extractFeedPosts } from './post-extractor.js';
 import { injectReplyButton, closeAllPanels } from './ui-injector.js';
 import { findAncestorPost } from '../utils/dom-helpers.js';
 import { getSettings } from '../utils/storage.js';
@@ -203,7 +204,7 @@ async function onNavigate() {
 
 // ─── Settings Change Listener ──────────────────────────────────────────────
 
-chrome.runtime.onMessage.addListener((message) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'SETTINGS_CHANGED') {
     const { enabled, debugMode } = message.payload || {};
     if (typeof enabled === 'boolean') {
@@ -219,6 +220,30 @@ chrome.runtime.onMessage.addListener((message) => {
       }
     }
     if (typeof debugMode === 'boolean') setDebugMode(debugMode);
+    return;
+  }
+
+  // Build engagement queue: extract feed posts from THIS page and hand them to
+  // the background worker to score + queue. Triggered from popup/options.
+  if (message.type === MSG.REQUEST_BUILD_QUEUE) {
+    (async () => {
+      try {
+        const onFeed = /linkedin\.com\/(feed|in\/|posts\/|search)/.test(location.href) ||
+                       document.querySelector('[componentkey^="feed-commentary_"]');
+        const posts = extractFeedPosts(document);
+        if (!posts.length) {
+          sendResponse({ ok: false, added: 0, reason: onFeed ? 'no-posts-found' : 'not-on-feed' });
+          return;
+        }
+        const resp = await chrome.runtime.sendMessage({ type: MSG.BUILD_QUEUE, payload: { posts } });
+        console.log(`%c[LIAR] queue build: scanned=${resp?.scanned} added=${resp?.added}`, 'color:#0a66c2;font-weight:bold');
+        sendResponse({ ok: true, ...resp });
+      } catch (e) {
+        console.warn('[LIAR] build queue failed:', e);
+        sendResponse({ ok: false, error: e.message });
+      }
+    })();
+    return true; // async response
   }
 });
 
