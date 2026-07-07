@@ -92,6 +92,43 @@ export const SELECTORS = {
   AI_REPLY_PANEL: '.liar-reply-panel',
 };
 
+// ─── Detection Anchors (2026) ──────────────────────────────────────────────
+// SINGLE SOURCE OF TRUTH for the fragile, LinkedIn-specific anchors that the
+// comment/post detection relies on. When LinkedIn rotates its DOM again, this
+// is the ONE place to update — nothing else should hardcode these strings.
+//
+// Each is an ORDERED fallback list: detection tries them in order and uses the
+// first that matches, so adding a new-DOM anchor to the front keeps the old
+// ones working as a safety net during the transition.
+export const DETECTION = {
+  // The post's own body text (distinguishes a post from a comment).
+  POST_COMMENTARY: ['[componentkey^="feed-commentary_"]'],
+  // A comment's body text.
+  COMMENT_COMMENTARY: ['[componentkey^="comment-commentary_"]'],
+  // Generic expandable text box (used by BOTH posts and comments — weaker signal).
+  EXPANDABLE_TEXT: ['[data-testid="expandable-text-box"]'],
+  // A person's profile link (marks a comment/post author).
+  PROFILE_LINK: ['a[href*="/in/"]'],
+  // The activity URN, wherever it survives in the DOM (post resolution).
+  ACTIVITY_URN: ['a[href*="urn:li:activity"]', '[data-testid*="urn:li:activity"]'],
+  // Legacy post containers (older DOM / some pages still use these).
+  LEGACY_POST: [
+    '[data-id*="urn:li:activity"]',
+    '[data-urn*="urn:li:activity"]',
+    '.feed-shared-update-v2',
+    'article.update-components-article',
+    '.occludable-update',
+  ],
+};
+
+// Localized "Reply" action words — the text-based anchor for the comment
+// action bar. Kept here so all detection paths share ONE list.
+export const REPLY_WORDS = [
+  'reply', 'répondre', 'antworten', 'responder', 'rispondi', 'beantwoorden',
+  'odpowiedz', 'yanıtla', 'उत्तर दें', 'رد', '回复', '回覆', '返信', '답글',
+  'svar', 'svara', 'vastaa', 'balas', 'trả lời', 'ตอบกลับ', 'відповісти', 'ответить',
+];
+
 // ─── Storage Keys ──────────────────────────────────────────────────────────
 export const STORAGE_KEYS = {
   SETTINGS: 'liar_settings',

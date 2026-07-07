@@ -108,6 +108,40 @@ function scanAndProcess() {
     `%c[LIAR] scan: comments=${totalComments} buttons=${injected}`,
     'color:#0a66c2;font-weight:bold'
   );
+
+  reportDetectionHealth(totalComments);
+}
+
+// ─── Detection Health Monitor ──────────────────────────────────────────────
+// Makes a future DOM break VISIBLE instead of silent. If the page clearly has
+// comment infrastructure (a comment composer, or a comment thread region) yet
+// we detected zero comments, our anchors have almost certainly broken — warn
+// loudly, once, with a pointer to where to fix it.
+let _detectionBrokenReported = false;
+
+function reportDetectionHealth(foundComments) {
+  if (foundComments > 0) {
+    _detectionBrokenReported = false; // recovered; allow future warnings
+    return;
+  }
+  // Signals that the page SHOULD have detectable comments:
+  //  - a comment composer text editor, or
+  //  - existing comment commentary text, or
+  //  - a localized "Reply" control somewhere on the page.
+  const hasCommentBox = !!document.querySelector(
+    '[data-testid="ui-core-tiptap-text-editor-wrapper"], [contenteditable="true"][role="textbox"], [aria-label*="comment" i][contenteditable]'
+  );
+  const hasCommentText = !!document.querySelector('[componentkey^="comment-commentary_"]');
+
+  if ((hasCommentBox || hasCommentText) && !_detectionBrokenReported) {
+    _detectionBrokenReported = true;
+    console.warn(
+      '%c[LIAR] ⚠ Detection health: comment UI is present but 0 comments were detected. ' +
+      'LinkedIn likely changed its DOM. Update the DETECTION anchors in utils/constants.js. ' +
+      '(This warning fires once per page.)',
+      'color:#e6a860;font-weight:bold'
+    );
+  }
 }
 
 function processPost(postEl) {

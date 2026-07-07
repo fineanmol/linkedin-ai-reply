@@ -4,8 +4,17 @@
  * Centralizing these makes it easy to update when LinkedIn changes their markup.
  */
 
-import { SELECTORS } from './constants.js';
+import { SELECTORS, DETECTION, REPLY_WORDS as REPLY_WORDS_LIST } from './constants.js';
 import logger from './logger.js';
+
+// Set form of the localized "Reply" words (fast lookup), sourced from the
+// single central list in constants.js.
+const REPLY_WORDS = new Set(REPLY_WORDS_LIST);
+
+// Join a DETECTION fallback list into a single querySelector string.
+function sel(list) {
+  return list.join(', ');
+}
 
 // ─── Safe Query Helpers ────────────────────────────────────────────────────
 
@@ -332,13 +341,6 @@ export function getPostContent(postEl) {
  * Find the button inside `el` whose VISIBLE text is exactly "Reply".
  * Checks span children to avoid matching aria-hidden spans.
  */
-// Localized "Reply" words. Shared by all detection paths.
-export const REPLY_WORDS = new Set([
-  'reply', 'répondre', 'antworten', 'responder', 'rispondi', 'beantwoorden',
-  'odpowiedz', 'yanıtla', 'उत्तर दें', 'رد', '回复', '回覆', '返信', '답글',
-  'svar', 'svara', 'vastaa', 'balas', 'trả lời', 'ตอบกลับ', 'відповісти', 'ответить'
-]);
-
 /**
  * Does this text look like a "Reply" action label?
  * Matches exact words AND aria-labels like "Reply to Anmol's comment"
@@ -503,15 +505,15 @@ export function getCommentElements(postEl) {
     let wrapper = null;
     for (let i = 0; i < 15 && current && current !== postEl && current !== document.body; i++) {
       // Reached the post root without finding a comment → not a comment.
-      if (current.querySelector('[componentkey^="feed-commentary_"]')) break;
+      if (current.querySelector(sel(DETECTION.POST_COMMENTARY))) break;
 
-      if (current.querySelector('[componentkey^="comment-commentary_"]')) {
+      if (current.querySelector(sel(DETECTION.COMMENT_COMMENTARY))) {
         wrapper = current;
         break;
       }
       // Secondary: profile link + a comment text box (not the post's).
-      if (current.querySelector('a[href*="/in/"]') &&
-          current.querySelector('[data-testid="expandable-text-box"]')) {
+      if (current.querySelector(sel(DETECTION.PROFILE_LINK)) &&
+          current.querySelector(sel(DETECTION.EXPANDABLE_TEXT))) {
         wrapper = current;
         break;
       }
@@ -527,7 +529,7 @@ export function getCommentElements(postEl) {
   // ── Strategy 2: Text anchor walk-up (stable attributes) ─────────────────
   if (commentEls.length === 0) {
     const textAnchors = qsAll(
-      '[data-testid="expandable-text-box"], [componentkey^="comment-commentary_"]',
+      sel([...DETECTION.EXPANDABLE_TEXT, ...DETECTION.COMMENT_COMMENTARY]),
       postEl
     );
     for (const anchor of textAnchors) {
@@ -557,7 +559,36 @@ export function getCommentElements(postEl) {
     }
   }
 
-  logger.log(`getCommentElements: found ${commentEls.length} comments via bottom-up Reply-button strategy`);
+  // ── Strategy 4: STRUCTURAL last-resort (anchor-free) ─────────────────────
+  // If every text/Reply anchor above fails (LinkedIn rotated the DOM again),
+  // fall back to pure structure: a comment is a small block that has a profile
+  // link AND a compact row of ≥2 action controls. This has no dependency on
+  // class names, data-testid, componentkey, or the word "Reply", so it keeps
+  // working (degraded but alive) through a DOM rev until we ship a proper anchor.
+  if (commentEls.length === 0) {
+    const profileLinks = qsAll(sel(DETECTION.PROFILE_LINK), postEl);
+    for (const link of profileLinks) {
+      let current = link.parentElement;
+      for (let i = 0; i < 10 && current && current !== postEl && current !== document.body; i++) {
+        // Skip the post root (has the post's own commentary text).
+        if (current.querySelector(sel(DETECTION.POST_COMMENTARY))) break;
+        const controls = current.querySelectorAll('button, [role="button"]');
+        const txt = current.textContent?.trim() || '';
+        // A comment block: has an action row (≥2 controls) and some real text,
+        // but isn't a huge container (cap text length to avoid grabbing the feed).
+        if (controls.length >= 2 && txt.length > 10 && txt.length < 5000) {
+          if (!seen.has(current)) { seen.add(current); commentEls.push(current); }
+          break;
+        }
+        current = current.parentElement;
+      }
+    }
+    if (commentEls.length > 0) {
+      logger.warn('getCommentElements: primary anchors FAILED — used structural fallback (Strategy 4). LinkedIn DOM likely changed; update DETECTION anchors in constants.js.');
+    }
+  }
+
+  logger.log(`getCommentElements: found ${commentEls.length} comments`);
   return commentEls;
 }
 
@@ -658,22 +689,17 @@ export function extractCommentData(commentEl) {
  */
 export function findAncestorPost(el) {
   // Legacy fast paths (older DOM / detail pages that still use them)
-  const legacy = el.closest('[data-id*="urn:li:activity"]')
-    || el.closest('[data-urn*="urn:li:activity"]')
-    || el.closest('.feed-shared-update-v2')
-    || el.closest('article.update-components-article')
-    || el.closest('.occludable-update');
+  const legacy = el.closest(sel(DETECTION.LEGACY_POST));
   if (legacy) return legacy;
 
   // 2026: walk up to the smallest ancestor holding the post's own commentary
-  // (componentkey^="feed-commentary_") — distinct from comment commentary.
+  // (feed-commentary_) — distinct from comment commentary — or an activity URN.
+  const postCommentary = sel(DETECTION.POST_COMMENTARY);
+  const activityUrn = sel(DETECTION.ACTIVITY_URN);
   let current = el.parentElement;
   for (let i = 0; i < 25 && current && current !== document.body; i++) {
-    if (current.querySelector('[componentkey^="feed-commentary_"]')) return current;
-    // Fallback signal: an analytics/post link carrying the activity URN.
-    if (current.querySelector('a[href*="urn:li:activity"], [data-testid*="urn:li:activity"]')) {
-      return current;
-    }
+    if (current.querySelector(postCommentary)) return current;
+    if (current.querySelector(activityUrn)) return current;
     current = current.parentElement;
   }
   return null;
