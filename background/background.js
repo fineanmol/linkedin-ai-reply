@@ -244,6 +244,12 @@ async function handleMessage(message, sender) {
         logger.warn('[BUILD_QUEUE] scoring failed, falling back to reactions order:', e.message);
       }
 
+      // STRICT quality bar: only queue posts genuinely worth engaging on.
+      // Commenting on a dead or off-topic post does nothing for the profile.
+      const MIN_RELEVANCE = settings.minRelevance ?? 0.6;
+      const MIN_REACTIONS = settings.minReactions ?? 5; // some traction; null counts allowed through
+      const CAP = settings.queueSize || 6;
+
       const relById = new Map(scored.map(s => [s.i, s]));
       const ranked = candidates
         .map((p, i) => ({
@@ -251,11 +257,18 @@ async function handleMessage(message, sender) {
           relevance: relById.get(i)?.relevance ?? 0,
           whyEngage: relById.get(i)?.why || '',
         }))
+        .filter(p => {
+          // If scoring ran, require high relevance. If scoring failed entirely,
+          // fall back to engagement-only so the feature still works.
+          if (scored.length && p.relevance < MIN_RELEVANCE) return false;
+          // Require meaningful traction WHEN we could read a count. A null count
+          // (couldn't extract) is allowed through rather than wrongly dropped.
+          if (p.reactionsApprox != null && p.reactionsApprox < MIN_REACTIONS) return false;
+          return true;
+        })
         // Rank: relevance desc, then reactions (soft) desc.
         .sort((a, b) => (b.relevance - a.relevance) || ((b.reactionsApprox || 0) - (a.reactionsApprox || 0)))
-        // If scoring worked, keep only relevance >= 0.3; else keep all.
-        .filter(p => (scored.length ? p.relevance >= 0.3 : true))
-        .slice(0, settings.queueSize || 12)
+        .slice(0, CAP)
         .map(p => ({
           urn: p.urn,
           authorName: p.authorName,
@@ -263,13 +276,14 @@ async function handleMessage(message, sender) {
           postText: (p.text || '').slice(0, 1000),
           permalink: p.permalink,
           relevance: p.relevance,
+          reactionsApprox: p.reactionsApprox,
           whyEngage: p.whyEngage,
-          draftReply: '',        // generated lazily on open
+          draftReply: '',        // generated lazily / via Draft all
         }));
 
       const added = await addToEngagementQueue(ranked);
-      logger.info(`[BUILD_QUEUE] scanned=${posts.length} candidates=${candidates.length} added=${added}`);
-      return { added, scanned: posts.length, candidates: candidates.length };
+      logger.info(`[BUILD_QUEUE] scanned=${posts.length} candidates=${candidates.length} qualified=${ranked.length} added=${added}`);
+      return { added, scanned: posts.length, candidates: candidates.length, qualified: ranked.length };
     }
 
     case MSG.GET_QUEUE:

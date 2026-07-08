@@ -171,8 +171,10 @@ export const DEFAULT_SETTINGS = {
   // Comma-separated niche topics used to score which feed posts are worth
   // engaging on. Seeded from the user's recent posts, user-editable in Options.
   topics: '',
-  // Max items in a freshly built engagement queue.
-  queueSize: 12,
+  // Engagement-queue quality bar (strict by default — only great targets).
+  queueSize: 6,          // max items per build
+  minRelevance: 0.6,     // 0-1; LLM relevance score required to queue
+  minReactions: 5,       // require some traction (only enforced when count is readable)
 };
 
 // ─── Intent Labels ─────────────────────────────────────────────────────────

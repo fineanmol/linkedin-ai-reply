@@ -325,6 +325,7 @@ async function initQueueTab(settings) {
   });
 
   document.getElementById('refresh-queue')?.addEventListener('click', loadQueue);
+  document.getElementById('draft-all')?.addEventListener('click', draftAll);
 
   document.getElementById('clear-queue')?.addEventListener('click', async () => {
     if (!confirm('Clear the engagement queue?')) return;
@@ -332,6 +333,38 @@ async function initQueueTab(settings) {
     showToast('Queue cleared.');
     loadQueue();
   });
+}
+
+/**
+ * Generate a draft comment for EVERY queued item that doesn't have one yet.
+ * Sequential (not parallel) to be gentle on a local Ollama backend.
+ */
+async function draftAll() {
+  const btn = document.getElementById('draft-all');
+  const status = document.getElementById('draft-all-status');
+  const resp = await sendMsg(MSG.GET_QUEUE);
+  const pending = (resp?.queue || []).filter(q => q.status !== 'skipped' && !q.draftReply);
+  if (!pending.length) { showToast('All items already drafted.'); return; }
+
+  btn.disabled = true;
+  let done = 0;
+  for (const item of pending) {
+    status.textContent = `Drafting ${done + 1} of ${pending.length}…`;
+    const gen = await sendMsg(MSG.GENERATE_REPLY, {
+      commentId: `queue-${item.id}`,
+      commentText: item.postText,
+      authorName: item.authorName,
+      postContent: item.postText,
+      intent: 'post_comment',
+    });
+    if (gen?.reply) {
+      await sendMsg(MSG.UPDATE_QUEUE_ITEM, { id: item.id, patch: { draftReply: gen.reply } });
+    }
+    done++;
+  }
+  status.textContent = `Drafted ${done} comments. Review, then Copy & open each post.`;
+  btn.disabled = false;
+  loadQueue();
 }
 
 async function loadQueue() {
