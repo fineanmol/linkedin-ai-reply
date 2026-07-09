@@ -154,6 +154,7 @@ export const STORAGE_KEYS = {
   MY_NAME: 'liar_my_name',
   MY_PROFILE_URL: 'liar_my_profile_url',
   ENGAGEMENT_QUEUE: 'liar_engagement_queue',
+  COMMENTS_LOG: 'liar_comments_log',
 };
 
 // ─── Default Settings ──────────────────────────────────────────────────────
@@ -246,6 +247,10 @@ export const MSG = {
   UPDATE_QUEUE_ITEM: 'UPDATE_QUEUE_ITEM',  // payload: { id, patch } → { success }
   CLEAR_QUEUE:       'CLEAR_QUEUE',        // → { success }
   REQUEST_BUILD_QUEUE:'REQUEST_BUILD_QUEUE',// popup/options→content: trigger a feed scan in the active tab
+  // ── Comments log ──
+  LOG_COMMENT:       'LOG_COMMENT',        // payload: a posted item → { success, counts }
+  GET_COMMENTS_LOG:  'GET_COMMENTS_LOG',   // → { log, counts:{today,week,total} }
+  CLEAR_COMMENTS_LOG:'CLEAR_COMMENTS_LOG', // → { success }
 };
 
 // ─── UI Constants ──────────────────────────────────────────────────────────

@@ -27,6 +27,7 @@
 
       <ul class="nav-list">
         <li><a href="#queue" class="nav-link active" data-tab="queue">🚀 Engagement Queue</a></li>
+        <li><a href="#comments" class="nav-link" data-tab="comments">💬 My Comments</a></li>
         <li><a href="#llm" class="nav-link" data-tab="llm">🤖 LLM Backend</a></li>
         <li><a href="#style" class="nav-link" data-tab="style">✍️ Style Profile</a></li>
         <li><a href="#history" class="nav-link" data-tab="history">📋 Reply History</a></li>
@@ -63,16 +64,22 @@
 
         <div class="card">
           <div class="card-title">Discover trending posts (beyond your feed)</div>
-          <p class="card-desc">LinkedIn has no global "trending" API — but topic hashtag pages surface high-engagement posts from people you don't follow. Open one, scroll a little, then click <b>Build queue</b> in the extension popup. These open in a new tab:</p>
+          <p class="card-desc"><b>LinkedIn's own curated trending posts</b> by topic — from top creators you don't follow. Open a category, scroll a little, then click <b>Build queue</b> in the extension popup. Opens in a new tab:</p>
+          <div class="hashtag-links" id="topcontent-links">
+            <a class="tag-chip" href="https://www.linkedin.com/top-content/artificial-intelligence/" target="_blank" rel="noopener">🔥 AI</a>
+            <a class="tag-chip" href="https://www.linkedin.com/top-content/engineering/" target="_blank" rel="noopener">🔥 Engineering</a>
+            <a class="tag-chip" href="https://www.linkedin.com/top-content/innovation/" target="_blank" rel="noopener">🔥 Innovation</a>
+            <a class="tag-chip" href="https://www.linkedin.com/top-content/future-of-work/" target="_blank" rel="noopener">🔥 Future of Work</a>
+            <a class="tag-chip" href="https://www.linkedin.com/top-content/technology/" target="_blank" rel="noopener">🔥 Technology</a>
+          </div>
+          <p class="card-desc" style="margin-top:14px;">Or browse topic <b>hashtag feeds</b> (broader, more recent):</p>
           <div class="hashtag-links" id="hashtag-links">
             <a class="tag-chip" href="https://www.linkedin.com/feed/hashtag/softwareengineering/" target="_blank" rel="noopener">#softwareengineering</a>
             <a class="tag-chip" href="https://www.linkedin.com/feed/hashtag/artificialintelligence/" target="_blank" rel="noopener">#artificialintelligence</a>
             <a class="tag-chip" href="https://www.linkedin.com/feed/hashtag/systemdesign/" target="_blank" rel="noopener">#systemdesign</a>
-            <a class="tag-chip" href="https://www.linkedin.com/feed/hashtag/webdevelopment/" target="_blank" rel="noopener">#webdevelopment</a>
             <a class="tag-chip" href="https://www.linkedin.com/feed/hashtag/frontend/" target="_blank" rel="noopener">#frontend</a>
             <a class="tag-chip" href="https://www.linkedin.com/feed/hashtag/programming/" target="_blank" rel="noopener">#programming</a>
-            <a class="tag-chip" href="https://www.linkedin.com/feed/hashtag/coding/" target="_blank" rel="noopener">#coding</a>
-            <a class="tag-chip" href="https://www.linkedin.com/feed/hashtag/technology/" target="_blank" rel="noopener">#technology</a>
+            <a class="tag-chip" href="https://www.linkedin.com/feed/hashtag/webdevelopment/" target="_blank" rel="noopener">#webdevelopment</a>
           </div>
         </div>
 
@@ -88,6 +95,28 @@
 
         <div class="history-list" id="queue-list">
           <div class="empty-state">Queue is empty. Open your LinkedIn feed, click the extension, and hit <b>Build today's engagement queue</b>.</div>
+        </div>
+      </section>
+
+      <!-- ── My Comments Tab ─────────────────────────────────────────── -->
+      <section class="tab-pane" id="tab-comments">
+        <div class="tab-header">
+          <h1>My Comments</h1>
+          <p class="tab-desc">Every comment you've marked as posted. This is your engagement track record — and posts logged here are auto-skipped when building new queues.</p>
+        </div>
+
+        <div class="stats-grid" style="display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:16px;">
+          <div class="card" style="text-align:center;"><div class="card-title" id="cl-today" style="font-size:28px;">0</div><div class="muted">Today</div></div>
+          <div class="card" style="text-align:center;"><div class="card-title" id="cl-week" style="font-size:28px;">0</div><div class="muted">This week</div></div>
+          <div class="card" style="text-align:center;"><div class="card-title" id="cl-total" style="font-size:28px;">0</div><div class="muted">All time</div></div>
+        </div>
+
+        <div class="history-toolbar">
+          <span id="comments-count">0 comments</span>
+          <button class="btn-danger-sm" id="clear-comments">Clear Log</button>
+        </div>
+        <div class="history-list" id="comments-list">
+          <div class="empty-state">No comments logged yet. Post from the on-page queue and tap “I posted this”.</div>
         </div>
       </section>
 

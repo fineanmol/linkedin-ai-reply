@@ -175,6 +175,7 @@ export function extractNameFromPhotoAlt(alt) {
     /Reply as (.+)/i,
     /Post as (.+)/i,
     /Post update as (.+)/i,
+    /View profile for (.+)/i,
     /View (.+?)['’]s profile/i,
     /(.+?)['’]s profile picture/i,
     /(.+?)['’]s profile/i,

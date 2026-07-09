@@ -45,8 +45,48 @@ function initTabs() {
       if (tab === 'history') loadHistory();
       if (tab === 'style') loadStyleProfile();
       if (tab === 'queue') loadQueue();
+      if (tab === 'comments') loadCommentsLog();
     });
   });
+}
+
+async function loadCommentsLog() {
+  const resp = await sendMsg(MSG.GET_COMMENTS_LOG);
+  const log = resp?.log || [];
+  const c = resp?.counts || { today: 0, week: 0, total: 0 };
+  document.getElementById('cl-today').textContent = c.today;
+  document.getElementById('cl-week').textContent = c.week;
+  document.getElementById('cl-total').textContent = c.total;
+  document.getElementById('comments-count').textContent =
+    `${log.length} ${log.length === 1 ? 'comment' : 'comments'}`;
+
+  const listEl = document.getElementById('comments-list');
+  if (!log.length) {
+    listEl.innerHTML = '<div class="empty-state">No comments logged yet. Post from the on-page queue and tap “I posted this”.</div>';
+  } else {
+    listEl.innerHTML = log.map(l => `
+      <div class="history-item">
+        <div class="history-item-meta">
+          <span class="history-status approved">✓ Posted</span>
+          <span>${escapeHTML(l.authorName || 'Someone')}</span>
+          <span>·</span>
+          <span>${formatDate(l.timestamp)}</span>
+        </div>
+        ${l.postText ? `<div class="history-comment">💬 "${escapeHTML(l.postText.slice(0, 120))}${l.postText.length > 120 ? '…' : ''}"</div>` : ''}
+        <div class="history-reply">${escapeHTML(l.comment || '')}</div>
+      </div>`).join('');
+  }
+
+  const clearBtn = document.getElementById('clear-comments');
+  if (clearBtn && !clearBtn._wired) {
+    clearBtn._wired = true;
+    clearBtn.addEventListener('click', async () => {
+      if (!confirm('Clear your comments log? Posts will no longer be auto-skipped.')) return;
+      await sendMsg(MSG.CLEAR_COMMENTS_LOG);
+      showToast('Comments log cleared.');
+      loadCommentsLog();
+    });
+  }
 }
 
 // ─── Sidebar Status ────────────────────────────────────────────────────────

@@ -11,6 +11,8 @@
 import { refreshMyIdentity, getMyIdentityLocal } from './post-detector.js';
 import { extractComments, extractPostContent } from './comment-extractor.js';
 import { extractFeedPosts } from './post-extractor.js';
+import { extractTopContentPosts, isTopContentPage } from './topcontent-extractor.js';
+import { mountQueuePanel } from './queue-panel.js';
 import { injectReplyButton, closeAllPanels } from './ui-injector.js';
 import { findAncestorPost } from '../utils/dom-helpers.js';
 import { getSettings } from '../utils/storage.js';
@@ -55,6 +57,9 @@ async function init() {
 
     // Initial scan with a small delay to let LinkedIn finish rendering
     setTimeout(scanAndProcess, 1000);
+
+    // Mount the on-page engagement-queue launcher (bottom-right).
+    setTimeout(() => mountQueuePanel(), 1200);
 
     startObserver();
     watchNavigation();
@@ -189,6 +194,9 @@ async function onNavigate() {
   closeAllPanels();
   _processedPosts.clear(); // Clear cached posts on page navigation
 
+  // LinkedIn's SPA nav can wipe our launcher from the DOM — re-mount it.
+  setTimeout(() => mountQueuePanel(), 800);
+
   await refreshMyIdentity();
   const { name, profilePath } = getMyIdentityLocal();
   if (name) {
@@ -228,11 +236,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === MSG.REQUEST_BUILD_QUEUE) {
     (async () => {
       try {
-        const onFeed = /linkedin\.com\/(feed|in\/|posts\/|search)/.test(location.href) ||
-                       document.querySelector('[componentkey^="feed-commentary_"]');
-        const posts = extractFeedPosts(document);
+        // Pick the right extractor: LinkedIn's curated trending page uses a
+        // different (article-card) DOM than the feed/hashtag/search pages.
+        const posts = isTopContentPage()
+          ? extractTopContentPosts(document)
+          : extractFeedPosts(document);
         if (!posts.length) {
-          sendResponse({ ok: false, added: 0, reason: onFeed ? 'no-posts-found' : 'not-on-feed' });
+          const onLinkedIn = /linkedin\.com/.test(location.href);
+          sendResponse({ ok: false, added: 0, reason: onLinkedIn ? 'no-posts-found' : 'not-on-feed' });
           return;
         }
         const resp = await chrome.runtime.sendMessage({ type: MSG.BUILD_QUEUE, payload: { posts } });

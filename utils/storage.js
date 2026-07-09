@@ -153,6 +153,47 @@ export async function clearEngagementQueue() {
   await storageRemove(STORAGE_KEYS.ENGAGEMENT_QUEUE);
 }
 
+// ─── Comments Log ────────────────────────────────────────────────────────────
+// A record of comments the user confirmed they POSTED. Powers: activity
+// counts/streak, a history view, and skip-already-engaged in future builds.
+// Item shape: { id, urn, authorName, postText, comment, timestamp }
+
+export async function getCommentsLog() {
+  const stored = await storageGet(STORAGE_KEYS.COMMENTS_LOG);
+  return stored || [];
+}
+
+export async function addToCommentsLog(entry) {
+  const log = await getCommentsLog();
+  // Dedup by urn so re-marking the same post doesn't double-count.
+  if (entry.urn && log.some(l => l.urn === entry.urn)) return log;
+  log.unshift({
+    id: crypto.randomUUID(),
+    timestamp: Date.now(),
+    ...entry,
+  });
+  await storageSet(STORAGE_KEYS.COMMENTS_LOG, log.slice(0, 500));
+  return log;
+}
+
+/** Set of activity URNs the user has already engaged on (for skip logic). */
+export async function getEngagedUrns() {
+  const log = await getCommentsLog();
+  return new Set(log.map(l => l.urn).filter(Boolean));
+}
+
+export function commentCounts(log) {
+  const now = Date.now();
+  const DAY = 86400000;
+  const today = log.filter(l => now - (l.timestamp || 0) < DAY).length;
+  const week = log.filter(l => now - (l.timestamp || 0) < 7 * DAY).length;
+  return { today, week, total: log.length };
+}
+
+export async function clearCommentsLog() {
+  await storageRemove(STORAGE_KEYS.COMMENTS_LOG);
+}
+
 // ─── Identity ──────────────────────────────────────────────────────────────
 
 export async function getMyIdentity() {

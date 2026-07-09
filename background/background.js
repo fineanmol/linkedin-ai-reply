@@ -14,6 +14,7 @@ import {
   getReplyHistory, addToReplyHistory,
   getMyIdentity, saveMyIdentity,
   getEngagementQueue, addToEngagementQueue, updateEngagementQueueItem, clearEngagementQueue,
+  getCommentsLog, addToCommentsLog, getEngagedUrns, commentCounts, clearCommentsLog,
 } from '../utils/storage.js';
 import { MSG } from '../utils/constants.js';
 import logger from '../utils/logger.js';
@@ -230,9 +231,16 @@ async function handleMessage(message, sender) {
     case MSG.BUILD_QUEUE: {
       const { posts = [] } = payload;
       const settings = await getSettings();
-      // Pre-filter: drop ads, own posts (already excluded by extractor), and
-      // posts the user already commented on.
-      const candidates = posts.filter(p => !p.isPromoted && !p.alreadyCommentedByMe && (p.text || '').length >= 20);
+      // Skip posts the user has already engaged on (logged as posted).
+      const engagedUrns = await getEngagedUrns();
+      // Pre-filter: drop ads, own posts (already excluded by extractor), posts
+      // already commented on, and posts already in the engagement log.
+      const candidates = posts.filter(p =>
+        !p.isPromoted &&
+        !p.alreadyCommentedByMe &&
+        (p.text || '').length >= 20 &&
+        !(p.urn && engagedUrns.has(p.urn))
+      );
       if (!candidates.length) return { added: 0, scanned: posts.length };
 
       let scored = [];
@@ -295,6 +303,28 @@ async function handleMessage(message, sender) {
 
     case MSG.CLEAR_QUEUE:
       await clearEngagementQueue();
+      return { success: true };
+
+    // Record a comment the user confirmed they POSTED.
+    case MSG.LOG_COMMENT: {
+      const it = payload || {};
+      await addToCommentsLog({
+        urn: it.urn || null,
+        authorName: it.authorName || 'Someone',
+        postText: (it.postText || '').slice(0, 300),
+        comment: (it.comment || it.draftReply || '').slice(0, 1000),
+      });
+      const counts = commentCounts(await getCommentsLog());
+      return { success: true, counts };
+    }
+
+    case MSG.GET_COMMENTS_LOG: {
+      const log = await getCommentsLog();
+      return { log, counts: commentCounts(log) };
+    }
+
+    case MSG.CLEAR_COMMENTS_LOG:
+      await clearCommentsLog();
       return { success: true };
 
     // ─── Ping ─────────────────────────────────────────────────────────────
