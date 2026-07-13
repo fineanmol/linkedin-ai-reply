@@ -36,9 +36,20 @@ export async function storageRemove(key) {
 
 // ─── Settings ─────────────────────────────────────────────────────────────
 
+// Gemini model IDs retired by Google — auto-migrate saved settings off these
+// so existing users don't keep hitting 404s with a stale stored model.
+const DEAD_GEMINI_MODELS = new Set([
+  'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash',
+  'gemini-1.5-flash', 'gemini-1.5-pro',
+]);
+
 export async function getSettings() {
   const stored = await storageGet(STORAGE_KEYS.SETTINGS);
-  return { ...DEFAULT_SETTINGS, ...(stored || {}) };
+  const settings = { ...DEFAULT_SETTINGS, ...(stored || {}) };
+  if (DEAD_GEMINI_MODELS.has(settings.geminiModel)) {
+    settings.geminiModel = DEFAULT_SETTINGS.geminiModel; // → gemini-flash-latest
+  }
+  return settings;
 }
 
 export async function saveSettings(settings) {

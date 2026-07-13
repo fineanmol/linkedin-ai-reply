@@ -150,7 +150,7 @@ async function initLLMTab(settings) {
   // Gemini
   document.getElementById('gemini-key').value = settings.geminiApiKey || '';
   const geminiModelSel = document.getElementById('gemini-model');
-  geminiModelSel.value = settings.geminiModel || 'gemini-2.5-flash';
+  geminiModelSel.value = settings.geminiModel || 'gemini-flash-latest';
 
   // Sliders
   const maxSlider = document.getElementById('max-length');

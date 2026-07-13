@@ -164,7 +164,7 @@ export const DEFAULT_SETTINGS = {
   ollamaUrl: 'http://localhost:11434',
   ollamaModel: 'gemma2:2b',
   geminiApiKey: '',
-  geminiModel: 'gemini-2.5-flash',
+  geminiModel: 'gemini-flash-latest',
   maxReplyLength: 150,        // words
   temperature: 0.7,
   autoLearnFromApproved: true,

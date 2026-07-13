@@ -12,11 +12,14 @@ import { PANEL_CSS } from './ui/styles.js';
 import * as templates from './ui/templates.js';
 import * as icons from './ui/icons.js';
 
+// Gemini model IDs (2026). `gemini-flash-latest` is an ALIAS that always
+// points to the current Flash release — resilient default so a model rotation
+// (like 2.5-flash's 404) doesn't break the extension again.
 export const GEMINI_MODELS = [
-  { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
-  { id: 'gemini-2.5-pro',   label: 'Gemini 2.5 Pro' },
-  { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
-  { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash' },
+  { id: 'gemini-flash-latest',   label: 'Gemini Flash (latest) — recommended' },
+  { id: 'gemini-3.5-flash',      label: 'Gemini 3.5 Flash' },
+  { id: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash-Lite — fastest/cheapest' },
+  { id: 'gemini-3.1-pro-preview',label: 'Gemini 3.1 Pro — advanced reasoning' },
 ];
 
 

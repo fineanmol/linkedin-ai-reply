@@ -100,7 +100,7 @@ async function checkBackendStatus(settings) {
     const hasKey = !!settings?.geminiApiKey;
     dot.className = `status-dot ${hasKey ? 'online' : 'offline'}`;
     label.textContent = hasKey ? 'Gemini API ready' : 'Gemini API key missing';
-    modelEl.textContent = settings?.geminiModel || 'gemini-2.5-flash';
+    modelEl.textContent = settings?.geminiModel || 'gemini-flash-latest';
     // Show hint only if key is missing
     hint.hidden = hasKey;
     if (!hasKey) {
@@ -121,7 +121,7 @@ async function checkBackendStatus(settings) {
     } else if (settings?.geminiApiKey) {
       dot.className = 'status-dot online';
       label.textContent = 'Auto → Gemini fallback';
-      modelEl.textContent = settings?.geminiModel || 'gemini-2.5-flash';
+      modelEl.textContent = settings?.geminiModel || 'gemini-flash-latest';
       hint.hidden = true;
     } else {
       dot.className = 'status-dot offline';

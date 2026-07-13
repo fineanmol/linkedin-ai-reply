@@ -22,60 +22,79 @@ const HOST_ID = 'liar-queue-host';
 let _open = false;
 
 const CSS = `
-  :host { all: initial; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-  * { box-sizing: border-box; }
+  /* Reset so LinkedIn's page cascade can't leak in (font, color, line-height). */
+  :host { all: initial; }
+  :host, :host * {
+    box-sizing: border-box;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  /* Fixed dark theme — high contrast, self-contained, doesn't depend on the
+     viewer's OS theme or LinkedIn's. Every text color is set explicitly. */
   .launcher {
-    position: fixed; right: 20px; bottom: 20px; z-index: 2147483000;
+    position: fixed; right: 24px; bottom: 24px; z-index: 2147483000;
     display: inline-flex; align-items: center; gap: 8px;
-    padding: 10px 16px; border-radius: 999px; border: none; cursor: pointer;
-    background: linear-gradient(135deg, #5cc3e8, #3b9dbf); color: #fff;
-    font-size: 13px; font-weight: 700; box-shadow: 0 6px 20px rgba(49,72,85,.28);
+    padding: 12px 18px; border-radius: 999px; border: none; cursor: pointer;
+    background: linear-gradient(135deg, #5cc3e8, #3b9dbf); color: #ffffff;
+    font-size: 14px; font-weight: 700; box-shadow: 0 6px 22px rgba(0,0,0,.35);
     transition: transform .15s ease, box-shadow .15s ease;
   }
-  .launcher:hover { transform: translateY(-2px); box-shadow: 0 10px 26px rgba(49,72,85,.34); }
+  .launcher:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(0,0,0,.42); }
   .launcher .badge {
-    background: #fff; color: #3b9dbf; border-radius: 999px; min-width: 20px;
-    height: 20px; padding: 0 6px; font-size: 12px; display: inline-flex;
+    background: #ffffff; color: #1e6f8c; border-radius: 999px; min-width: 22px;
+    height: 22px; padding: 0 7px; font-size: 12px; display: inline-flex;
     align-items: center; justify-content: center; font-weight: 800;
   }
+
+  /* Centered modal + dimmed backdrop so you clearly see what's queued. */
+  .backdrop {
+    position: fixed; inset: 0; z-index: 2147483000;
+    background: rgba(16, 24, 33, .55);
+    display: flex; align-items: center; justify-content: center;
+    animation: fade .15s ease-out;
+  }
+  @keyframes fade { from { opacity:0 } to { opacity:1 } }
   .panel {
-    position: fixed; right: 20px; bottom: 74px; z-index: 2147483000;
-    width: 380px; max-width: calc(100vw - 40px); max-height: 72vh;
+    width: 460px; max-width: calc(100vw - 40px); max-height: 82vh;
     display: flex; flex-direction: column;
-    background: #fff; color: #314855; border: 1px solid rgba(49,72,85,.15);
-    border-radius: 14px; box-shadow: 0 18px 50px rgba(49,72,85,.28); overflow: hidden;
-    animation: slide .18s ease-out;
+    background: #17212b; color: #eaf1f6;
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 16px; box-shadow: 0 24px 70px rgba(0,0,0,.5); overflow: hidden;
+    animation: pop .18s ease-out;
   }
-  @keyframes slide { from { opacity:0; transform: translateY(8px);} to {opacity:1; transform:none;} }
-  @media (prefers-color-scheme: dark) {
-    .panel { background:#1b2733; color:#e8eef3; border-color:rgba(255,255,255,.14); }
-    .row { border-color: rgba(255,255,255,.08) !important; }
-    .draft { background:#101922 !important; color:#e8eef3 !important; border-color:rgba(255,255,255,.14) !important; }
-    .muted { color:#9fb0bd !important; }
-  }
-  .head { display:flex; align-items:center; gap:8px; padding:14px 16px; border-bottom:1px solid rgba(49,72,85,.12); }
-  .head h3 { margin:0; font-size:14px; font-weight:700; flex:1; }
-  .head button { background:none; border:none; cursor:pointer; color:inherit; font-size:16px; opacity:.6; padding:4px; }
-  .head button:hover { opacity:1; }
-  .toolbar { display:flex; gap:8px; padding:10px 16px; border-bottom:1px solid rgba(49,72,85,.12); flex-wrap:wrap; }
-  .btn { border:none; border-radius:8px; padding:7px 12px; font-size:12.5px; font-weight:600; cursor:pointer; }
-  .btn-primary { background:#5cc3e8; color:#fff; }
-  .btn-primary:hover { filter:brightness(.96); }
-  .btn-ghost { background:rgba(92,195,232,.12); color:#3b9dbf; }
-  .btn-ghost:hover { background:rgba(92,195,232,.22); }
-  .btn:disabled { opacity:.5; cursor:not-allowed; }
-  .list { overflow-y:auto; padding:8px; }
-  .row { border:1px solid rgba(49,72,85,.12); border-radius:10px; padding:10px 12px; margin:8px 4px; }
+  @keyframes pop { from { opacity:0; transform: scale(.96);} to { opacity:1; transform:none;} }
+
+  .head { display:flex; align-items:center; gap:10px; padding:16px 18px; border-bottom:1px solid rgba(255,255,255,.1); }
+  .head h3 { margin:0; font-size:15px; font-weight:700; flex:1; color:#ffffff; }
+  .head button { background:none; border:none; cursor:pointer; color:#c6d3dd; font-size:20px; line-height:1; padding:2px 6px; border-radius:6px; }
+  .head button:hover { color:#fff; background:rgba(255,255,255,.1); }
+
+  .toolbar { display:flex; gap:8px; padding:12px 18px; border-bottom:1px solid rgba(255,255,255,.1); flex-wrap:wrap; }
+  .btn { border:none; border-radius:8px; padding:8px 13px; font-size:13px; font-weight:700; cursor:pointer; }
+  .btn-primary { background:#5cc3e8; color:#0c1a22; }
+  .btn-primary:hover { filter:brightness(1.06); }
+  .btn-ghost { background:rgba(92,195,232,.16); color:#8fdcf5; }
+  .btn-ghost:hover { background:rgba(92,195,232,.28); }
+  .btn:disabled { opacity:.45; cursor:not-allowed; }
+
+  .list { overflow-y:auto; padding:10px; }
+  .row { border:1px solid rgba(255,255,255,.1); border-radius:12px; padding:12px 14px; margin:8px 4px; background:rgba(255,255,255,.02); }
   .row.done { opacity:.5; }
-  .meta { display:flex; gap:6px; align-items:center; font-size:12px; margin-bottom:6px; flex-wrap:wrap; }
-  .who { font-weight:700; }
-  .pill { background:rgba(92,195,232,.14); color:#3b9dbf; border-radius:999px; padding:1px 7px; font-size:10.5px; font-weight:700; }
-  .snip { font-size:12.5px; line-height:1.4; margin:0 0 8px; }
-  .muted { color: rgba(49,72,85,.6); }
-  .draft { width:100%; min-height:56px; border:1px solid rgba(49,72,85,.18); border-radius:8px; padding:8px; font:inherit; font-size:12.5px; resize:vertical; background:#f8fafc; color:#314855; }
-  .acts { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
-  .empty { padding:26px 16px; text-align:center; font-size:13px; color:rgba(49,72,85,.6); }
-  .status { padding:6px 16px; font-size:11.5px; color:rgba(49,72,85,.6); }
+  .meta { display:flex; gap:6px; align-items:center; font-size:12.5px; margin-bottom:6px; flex-wrap:wrap; color:#c6d3dd; }
+  .who { font-weight:700; color:#ffffff; }
+  .pill { background:rgba(92,195,232,.2); color:#8fdcf5; border-radius:999px; padding:2px 8px; font-size:11px; font-weight:700; }
+  .snip { font-size:13px; line-height:1.45; margin:0 0 8px; color:#dbe6ee; }
+  .muted { color:#9fb0bd; }
+  .draft {
+    width:100%; min-height:60px; border:1px solid rgba(255,255,255,.16);
+    border-radius:8px; padding:9px; font-size:13px; line-height:1.45; resize:vertical;
+    background:#0e1720; color:#eaf1f6;
+  }
+  .draft::placeholder { color:#7d8b96; }
+  .draft:focus { outline:none; border-color:#5cc3e8; box-shadow:0 0 0 1px #5cc3e8; }
+  .acts { display:flex; gap:6px; margin-top:9px; flex-wrap:wrap; }
+  .empty { padding:30px 18px; text-align:center; font-size:13.5px; line-height:1.5; color:#c6d3dd; }
+  .empty b { color:#fff; }
+  .status { padding:8px 18px; font-size:12px; color:#9fb0bd; border-bottom:1px solid rgba(255,255,255,.06); }
 `;
 
 function send(type, payload) {
@@ -159,21 +178,28 @@ export class QueuePanel {
     }).join('');
 
     this.root.innerHTML = `
-      <div class="panel">
-        <div class="head">
-          <h3>🚀 Engagement Queue</h3>
-          <span class="pill" title="Comments you've posted">${counts.today} today · ${counts.week} this week</span>
-          <button id="q-min" title="Minimize">—</button>
+      <div class="backdrop" id="q-backdrop">
+        <div class="panel" role="dialog" aria-label="Engagement Queue">
+          <div class="head">
+            <h3>🚀 Engagement Queue</h3>
+            <span class="pill" title="Comments you've posted">${counts.today} today · ${counts.week} this week</span>
+            <button id="q-min" title="Close">✕</button>
+          </div>
+          <div class="toolbar">
+            <button class="btn btn-primary" id="q-build">＋ Build from this page</button>
+            <button class="btn btn-ghost" id="q-draftall">✨ Draft all</button>
+          </div>
+          <div class="status" id="q-status">Copy a draft → comment on LinkedIn → tap “I posted this” to track it.</div>
+          <div class="list">${rows || '<div class="empty">Queue is empty.<br>Open your feed or a trending page, then click <b>Build from this page</b>.</div>'}</div>
         </div>
-        <div class="toolbar">
-          <button class="btn btn-primary" id="q-build">＋ Build from this page</button>
-          <button class="btn btn-ghost" id="q-draftall">✨ Draft all</button>
-        </div>
-        <div class="status" id="q-status">Copy a draft → comment on LinkedIn → tap “I posted this” to track it.</div>
-        <div class="list">${rows || '<div class="empty">Queue is empty.<br>Open your feed or a trending page, then click <b>Build from this page</b>.</div>'}</div>
       </div>`;
 
-    this.root.querySelector('#q-min').onclick = () => { _open = false; this.renderLauncher(); };
+    const close = () => { _open = false; this.renderLauncher(); };
+    this.root.querySelector('#q-min').onclick = close;
+    // Click outside the panel (on the dim backdrop) closes it.
+    this.root.querySelector('#q-backdrop').onclick = (e) => {
+      if (e.target.id === 'q-backdrop') close();
+    };
     this.root.querySelector('#q-build').onclick = () => this.buildFromPage();
     this.root.querySelector('#q-draftall').onclick = () => this.draftAll();
     this.root.querySelectorAll('.q-draft').forEach(b => b.onclick = () => this.draftOne(b.dataset.id));

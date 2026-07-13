@@ -71,7 +71,7 @@ export function headerHTML(intent, settings, ollamaModels) {
   const backend = s.llmBackend || 'gemini';
   const activeModel = backend === 'ollama'
     ? (s.ollamaModel || 'gemma2:2b')
-    : (s.geminiModel || 'gemini-2.5-flash');
+    : (s.geminiModel || 'gemini-flash-latest');
 
   const shortLabel = activeModel
     .replace('gemini-', 'Gemini ')
