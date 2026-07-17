@@ -270,15 +270,13 @@ export class QueuePanel {
     return `
       <div class="toolbar">
         <button class="btn btn-primary" id="c-scan">＋ Scan my connections</button>
-        <button class="btn btn-ghost" id="c-draftall">✨ Draft all</button>
       </div>
-      <div class="status" id="q-status">Open your Connections page, Scan, Draft → Copy & open chat → paste & Send yourself.</div>
+      <div class="status" id="q-status">Scan → Draft (reads their profile + recent posts) → Copy &amp; open chat → paste &amp; Send yourself.</div>
       <div class="list">${rows || '<div class="empty">No connections queued.<br>Open your <b>Connections</b> page, then <b>Scan my connections</b>.</div>'}</div>`;
   }
 
   _wireConnections() {
     this.root.querySelector('#c-scan').onclick = () => this.scanConnections();
-    this.root.querySelector('#c-draftall').onclick = () => this.draftAllConnections();
     this.root.querySelectorAll('.c-draft').forEach(b => b.onclick = () => this.draftConnection(b.dataset.id));
     this.root.querySelectorAll('.c-go').forEach(b => b.onclick = () => this.openChat(b.dataset.id, b.dataset.path));
     this.root.querySelectorAll('.c-sent').forEach(b => b.onclick = () => this.markSent(b.dataset.id));
@@ -305,26 +303,17 @@ export class QueuePanel {
     const c = connections.find(x => x.id === id);
     if (!c) return;
     const ta = this.root.querySelector(`.cdraft[data-id="${id}"]`);
-    if (ta) ta.value = 'Writing…';
-    const gen = await send(MSG.DRAFT_WELCOME, { name: c.name, headline: c.headline });
+    if (ta) ta.value = 'Reading their profile & recent posts…';
+    this.status('Opening their profile to personalize (a few seconds)…');
+    // DEEP draft: background opens their profile, reads About + recent posts,
+    // drafts from that, closes the tab. Per-click only.
+    const gen = await send(MSG.DEEP_DRAFT_WELCOME, {
+      profilePath: c.profilePath, name: c.name, headline: c.headline,
+    });
     const msg = gen?.message || `(couldn't generate: ${gen?.error || 'unknown'})`;
     if (ta) ta.value = msg;
     await send(MSG.UPDATE_CONNECTION, { id, patch: { draftMessage: msg } });
-  }
-
-  async draftAllConnections() {
-    const { connections = [] } = await send(MSG.GET_CONNECTIONS);
-    const pending = connections.filter(c => c.status !== 'skipped' && !c.draftMessage);
-    if (!pending.length) { this.status('All connections already drafted.'); return; }
-    let n = 0;
-    for (const c of pending) {
-      this.status(`Drafting ${n + 1} of ${pending.length}…`);
-      const gen = await send(MSG.DRAFT_WELCOME, { name: c.name, headline: c.headline });
-      if (gen?.message) await send(MSG.UPDATE_CONNECTION, { id: c.id, patch: { draftMessage: gen.message } });
-      n++;
-    }
-    this.status(`Drafted ${n}. Review, then Copy & open chat.`);
-    this.renderPanel();
+    this.status(gen?.deep ? 'Drafted from their profile + posts ✓' : 'Drafted (limited profile info) ✓');
   }
 
   async openChat(id, profilePath) {
@@ -334,12 +323,16 @@ export class QueuePanel {
     const msg = (ta?.value || c?.draftMessage || '').trim();
     if (msg) {
       const ok = await copyToClipboard(msg);
-      this.status(ok ? 'Copied ✓ — paste in the chat and Send, then tap “I sent it”.' : 'Copy failed — select and copy manually.');
+      this.status(ok ? 'Copied ✓ — paste in the message box and Send, then tap “I sent it”.' : 'Copy failed — select and copy manually.');
     }
     await send(MSG.UPDATE_CONNECTION, { id, patch: { status: 'copied' } });
-    // Open their profile with the message overlay (user sends manually).
+    // Open their MESSAGING thread directly (not just the profile). LinkedIn's
+    // messaging deep-link by profile path opens the compose thread with them.
     const path = profilePath || c?.profilePath;
-    if (path) window.open(`https://www.linkedin.com${path}/`, '_blank', 'noopener');
+    if (path) {
+      const handle = path.replace(/^\/in\//, '').replace(/\/$/, '');
+      window.open(`https://www.linkedin.com/messaging/thread/new/?recipient=${encodeURIComponent(handle)}`, '_blank', 'noopener');
+    }
     this.renderPanel();
   }
 

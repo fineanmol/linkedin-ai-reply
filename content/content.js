@@ -13,6 +13,7 @@ import { extractComments, extractPostContent } from './comment-extractor.js';
 import { extractFeedPosts } from './post-extractor.js';
 import { extractTopContentPosts, isTopContentPage } from './topcontent-extractor.js';
 import { extractConnections, isConnectionsPage } from './connections-extractor.js';
+import { extractProfile, isProfilePage } from './profile-extractor.js';
 import { mountQueuePanel } from './queue-panel.js';
 import { injectReplyButton, closeAllPanels } from './ui-injector.js';
 import { findAncestorPost } from '../utils/dom-helpers.js';
@@ -256,6 +257,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
     })();
     return true; // async response
+  }
+
+  // Background opened this profile tab to deep-scrape it for a welcome message.
+  if (message.type === MSG.SCRAPE_PROFILE) {
+    try {
+      sendResponse(isProfilePage() ? extractProfile(document) : null);
+    } catch (e) {
+      sendResponse(null);
+    }
+    return true;
   }
 
   // Scan the connections page for new connections → queue for welcome drafts.

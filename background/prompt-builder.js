@@ -167,27 +167,39 @@ export function parseScoringResponse(raw, count) {
  * Build messages for a short, human, personalized note to a NEW connection.
  * The user reviews and sends it manually — this only drafts.
  */
-export function buildWelcomeMessages({ userName, styleContext, name, headline }) {
+export function buildWelcomeMessages({ userName, styleContext, name, headline, about, recentPosts }) {
   const first = (name || '').trim().split(/\s+/)[0] || 'there';
-  const system = `You are ${userName || 'a real person'} writing a short first message to someone who just connected with you on LinkedIn. Write like a real human, not a template.
+  const system = `You are ${userName || 'a real person'} writing a short first message to someone who just connected with you on LinkedIn. Write like a real human texting a peer, not a template or a marketer.
 
 ${styleContext}
 
 WHAT MAKES IT WORK:
-- Warm, brief, specific. 1-2 sentences, ~15-35 words. Like a real note, not a pitch.
-- Reference something REAL from their headline/role if given — a genuine reason you're glad to connect.
-- Sound like a person typing quickly, not a marketer.
+- Warm, brief, specific. 1-2 sentences, ~15-35 words.
+- Anchor on ONE real, specific thing about them — a topic from their About or a recent post, or their actual role. The more specific, the less it reads as AI.
+- Sound like a quick, genuine note. Plain words. Contractions.
 
-NEVER:
-- "I'm excited to connect", "Thanks for connecting", "Great to be connected", "Looking forward to networking", "Let's stay in touch" — these are dead giveaways of a template.
-- No pitch, no ask, no "let me know if I can help", no links, no emojis unless the style examples use them.
-- Do NOT invent shared history or claim you've met.
+NEVER (these scream AI / template):
+- "I'm excited to connect", "Thanks for connecting", "Great to be connected", "Looking forward to networking", "Let's stay in touch", "I came across your profile", "hope you're doing well".
+- NO em-dashes or en-dashes (—, –). Use commas or periods. This is important.
+- No "X, Y, and Z" tricolon lists. No hedged, balanced, essay cadence.
+- No pitch, no ask, no "let me know if I can help", no links, no hashtags, no emojis unless the style examples use them.
+- Do NOT invent shared history, a workplace, or claim you've met. Only use what's given below.
 
 Output ONLY the message text.`;
 
-  const user = `New connection: ${name || 'this person'}${headline ? `\nTheir headline: "${headline}"` : ''}
+  const ctx = [];
+  if (headline) ctx.push(`Headline: "${headline}"`);
+  if (about) ctx.push(`About (their words): "${about.slice(0, 400)}"`);
+  if (recentPosts?.length) {
+    ctx.push(`Recent post${recentPosts.length > 1 ? 's' : ''} they wrote:`);
+    recentPosts.slice(0, 2).forEach((p, i) => ctx.push(`  ${i + 1}. "${p.slice(0, 240)}"`));
+  }
+  const contextBlock = ctx.length ? ctx.join('\n') : `(only their name is known)`;
 
-Write one short, genuine opening message to ${first}. Reference their work if the headline gives you something real. No template phrases.`;
+  const user = `New connection: ${name || 'this person'}
+${contextBlock}
+
+Write one short, genuine opening message to ${first}. Reference the most interesting specific thing above (a recent post beats the headline). No template phrases, no dashes.`;
 
   return [
     { role: 'system', content: system },

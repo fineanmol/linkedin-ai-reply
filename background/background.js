@@ -6,7 +6,7 @@
 
 import { llmRouter } from './llm-router.js';
 import { replyCache } from './reply-cache.js';
-import { buildMessages, buildScoringMessages, parseScoringResponse, buildWelcomeMessages } from './prompt-builder.js';
+import { buildMessages, buildScoringMessages, parseScoringResponse, buildWelcomeMessages, humanizeReply } from './prompt-builder.js';
 import { getProfileWithContext, learnFromApprovedReply, saveManualExamples } from './style-profiler.js';
 import {
   getSettings, saveSettings,
@@ -333,14 +333,58 @@ async function handleMessage(message, sender) {
 
     // ─── Connection welcome messages (draft-assist only, never auto-send) ───
     case MSG.DRAFT_WELCOME: {
-      const { name, headline } = payload || {};
+      const { name, headline, about, recentPosts } = payload || {};
       try {
         const [{ styleContext }, identity] = await Promise.all([getProfileWithContext(), getMyIdentity()]);
-        const messages = buildWelcomeMessages({ userName: identity.name || 'the user', styleContext, name, headline });
+        const messages = buildWelcomeMessages({ userName: identity.name || 'the user', styleContext, name, headline, about, recentPosts });
         const { text } = await llmRouter.chat(messages);
-        return { message: text };
+        return { message: humanizeReply(text) };
       } catch (e) {
         return { error: e.message };
+      }
+    }
+
+    // Deep draft: open the connection's profile in a background tab, scrape
+    // their About + recent posts, draft from that, then close the tab.
+    // Per-click only (never batched) to stay out of automation-detection turf.
+    case MSG.DEEP_DRAFT_WELCOME: {
+      const { profilePath, name, headline } = payload || {};
+      let tabId = null;
+      try {
+        const url = `https://www.linkedin.com${profilePath}/`;
+        const tab = await chrome.tabs.create({ url, active: false });
+        tabId = tab.id;
+        // Wait for the profile to finish loading, then ask it to scrape.
+        const profile = await new Promise((resolve) => {
+          let tries = 0;
+          const attempt = () => {
+            tries++;
+            chrome.tabs.sendMessage(tabId, { type: MSG.SCRAPE_PROFILE })
+              .then(res => {
+                if (res && (res.about || res.recentPosts?.length || res.name)) resolve(res);
+                else if (tries < 8) setTimeout(attempt, 1200);
+                else resolve(null);
+              })
+              .catch(() => { if (tries < 8) setTimeout(attempt, 1200); else resolve(null); });
+          };
+          setTimeout(attempt, 2500); // give the SPA time to render
+        });
+
+        const [{ styleContext }, identity] = await Promise.all([getProfileWithContext(), getMyIdentity()]);
+        const messages = buildWelcomeMessages({
+          userName: identity.name || 'the user',
+          styleContext,
+          name: profile?.name || name,
+          headline: profile?.headline || headline,
+          about: profile?.about || '',
+          recentPosts: profile?.recentPosts || [],
+        });
+        const { text } = await llmRouter.chat(messages);
+        return { message: humanizeReply(text), deep: !!(profile?.about || profile?.recentPosts?.length) };
+      } catch (e) {
+        return { error: e.message };
+      } finally {
+        if (tabId) chrome.tabs.remove(tabId).catch(() => {});
       }
     }
 
