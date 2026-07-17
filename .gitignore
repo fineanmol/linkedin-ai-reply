@@ -38,3 +38,4 @@ liar_style*.json
 # Logs
 *.log
 npm-debug.log*
+.claude/

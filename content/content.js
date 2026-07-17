@@ -12,6 +12,7 @@ import { refreshMyIdentity, getMyIdentityLocal } from './post-detector.js';
 import { extractComments, extractPostContent } from './comment-extractor.js';
 import { extractFeedPosts } from './post-extractor.js';
 import { extractTopContentPosts, isTopContentPage } from './topcontent-extractor.js';
+import { extractConnections, isConnectionsPage } from './connections-extractor.js';
 import { mountQueuePanel } from './queue-panel.js';
 import { injectReplyButton, closeAllPanels } from './ui-injector.js';
 import { findAncestorPost } from '../utils/dom-helpers.js';
@@ -255,6 +256,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
     })();
     return true; // async response
+  }
+
+  // Scan the connections page for new connections → queue for welcome drafts.
+  if (message.type === MSG.REQUEST_SCAN_CONNECTIONS) {
+    (async () => {
+      try {
+        if (!isConnectionsPage()) {
+          sendResponse({ ok: false, reason: 'not-on-connections' });
+          return;
+        }
+        const connections = extractConnections(document);
+        if (!connections.length) {
+          sendResponse({ ok: false, reason: 'no-connections-found' });
+          return;
+        }
+        const resp = await chrome.runtime.sendMessage({ type: MSG.ADD_CONNECTIONS, payload: { connections } });
+        console.log(`%c[LIAR] connections scan: found=${connections.length} added=${resp?.added}`, 'color:#0a66c2;font-weight:bold');
+        sendResponse({ ok: true, found: connections.length, ...resp });
+      } catch (e) {
+        console.warn('[LIAR] scan connections failed:', e);
+        sendResponse({ ok: false, error: e.message });
+      }
+    })();
+    return true;
   }
 });
 

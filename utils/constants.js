@@ -155,6 +155,7 @@ export const STORAGE_KEYS = {
   MY_PROFILE_URL: 'liar_my_profile_url',
   ENGAGEMENT_QUEUE: 'liar_engagement_queue',
   COMMENTS_LOG: 'liar_comments_log',
+  CONNECTIONS_QUEUE: 'liar_connections_queue',
 };
 
 // ─── Default Settings ──────────────────────────────────────────────────────
@@ -166,7 +167,7 @@ export const DEFAULT_SETTINGS = {
   geminiApiKey: '',
   geminiModel: 'gemini-flash-latest',
   maxReplyLength: 150,        // words
-  temperature: 0.7,
+  temperature: 0.85,          // higher = more voice variety, less generic sameness
   autoLearnFromApproved: true,
   debugMode: false,
   // Comma-separated niche topics used to score which feed posts are worth
@@ -251,6 +252,13 @@ export const MSG = {
   LOG_COMMENT:       'LOG_COMMENT',        // payload: a posted item → { success, counts }
   GET_COMMENTS_LOG:  'GET_COMMENTS_LOG',   // → { log, counts:{today,week,total} }
   CLEAR_COMMENTS_LOG:'CLEAR_COMMENTS_LOG', // → { success }
+  // ── Connection welcome messages (draft-assist, never auto-send) ──
+  DRAFT_WELCOME:     'DRAFT_WELCOME',      // payload: { name, headline } → { message }
+  ADD_CONNECTIONS:   'ADD_CONNECTIONS',    // payload: { connections:[...] } → { added }
+  GET_CONNECTIONS:   'GET_CONNECTIONS',    // → { connections }
+  UPDATE_CONNECTION: 'UPDATE_CONNECTION',  // payload: { id, patch } → { success }
+  CLEAR_CONNECTIONS: 'CLEAR_CONNECTIONS',  // → { success }
+  REQUEST_SCAN_CONNECTIONS: 'REQUEST_SCAN_CONNECTIONS', // panel→content: scan connections page
 };
 
 // ─── UI Constants ──────────────────────────────────────────────────────────

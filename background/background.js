@@ -6,7 +6,7 @@
 
 import { llmRouter } from './llm-router.js';
 import { replyCache } from './reply-cache.js';
-import { buildMessages, buildScoringMessages, parseScoringResponse } from './prompt-builder.js';
+import { buildMessages, buildScoringMessages, parseScoringResponse, buildWelcomeMessages } from './prompt-builder.js';
 import { getProfileWithContext, learnFromApprovedReply, saveManualExamples } from './style-profiler.js';
 import {
   getSettings, saveSettings,
@@ -15,6 +15,7 @@ import {
   getMyIdentity, saveMyIdentity,
   getEngagementQueue, addToEngagementQueue, updateEngagementQueueItem, clearEngagementQueue,
   getCommentsLog, addToCommentsLog, getEngagedUrns, commentCounts, clearCommentsLog,
+  getConnectionsQueue, addConnections, updateConnection, clearConnectionsQueue,
 } from '../utils/storage.js';
 import { MSG } from '../utils/constants.js';
 import logger from '../utils/logger.js';
@@ -86,6 +87,9 @@ async function handleMessage(message, sender) {
         comment: { text: commentText, authorName },
         intent,
         maxWords: settings.maxReplyLength,
+        // On regenerate, ask for a genuinely different angle so the user gets
+        // variety instead of the same sentence reworded.
+        vary: !!forceRegenerate,
       });
 
       // Register an AbortController so a later CANCEL_REPLY can abort this
@@ -325,6 +329,35 @@ async function handleMessage(message, sender) {
 
     case MSG.CLEAR_COMMENTS_LOG:
       await clearCommentsLog();
+      return { success: true };
+
+    // ─── Connection welcome messages (draft-assist only, never auto-send) ───
+    case MSG.DRAFT_WELCOME: {
+      const { name, headline } = payload || {};
+      try {
+        const [{ styleContext }, identity] = await Promise.all([getProfileWithContext(), getMyIdentity()]);
+        const messages = buildWelcomeMessages({ userName: identity.name || 'the user', styleContext, name, headline });
+        const { text } = await llmRouter.chat(messages);
+        return { message: text };
+      } catch (e) {
+        return { error: e.message };
+      }
+    }
+
+    case MSG.ADD_CONNECTIONS: {
+      const added = await addConnections(payload?.connections || []);
+      return { added };
+    }
+
+    case MSG.GET_CONNECTIONS:
+      return { connections: await getConnectionsQueue() };
+
+    case MSG.UPDATE_CONNECTION:
+      await updateConnection(payload.id, payload.patch || {});
+      return { success: true };
+
+    case MSG.CLEAR_CONNECTIONS:
+      await clearConnectionsQueue();
       return { success: true };
 
     // ─── Ping ─────────────────────────────────────────────────────────────

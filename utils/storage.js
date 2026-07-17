@@ -205,6 +205,49 @@ export async function clearCommentsLog() {
   await storageRemove(STORAGE_KEYS.COMMENTS_LOG);
 }
 
+// ─── Connections Queue (welcome-message drafts) ──────────────────────────────
+// Item shape: { id, profilePath, name, headline, connectedOn, draftMessage,
+//   status: 'new'|'copied'|'done', timestamp }
+
+export async function getConnectionsQueue() {
+  const stored = await storageGet(STORAGE_KEYS.CONNECTIONS_QUEUE);
+  return stored || [];
+}
+
+export async function saveConnectionsQueue(items) {
+  await storageSet(STORAGE_KEYS.CONNECTIONS_QUEUE, items || []);
+}
+
+/** Merge new connections, de-duping by profilePath. Returns count added. */
+export async function addConnections(newItems) {
+  const queue = await getConnectionsQueue();
+  const seen = new Set(queue.map(q => q.profilePath));
+  let added = 0;
+  for (const item of newItems) {
+    if (!item.profilePath || seen.has(item.profilePath)) continue;
+    seen.add(item.profilePath);
+    queue.push({
+      id: crypto.randomUUID(),
+      timestamp: Date.now(),
+      status: 'new',
+      draftMessage: '',
+      ...item,
+    });
+    added++;
+  }
+  await saveConnectionsQueue(queue.slice(0, 200));
+  return added;
+}
+
+export async function updateConnection(id, patch) {
+  const queue = await getConnectionsQueue();
+  await saveConnectionsQueue(queue.map(q => (q.id === id ? { ...q, ...patch } : q)));
+}
+
+export async function clearConnectionsQueue() {
+  await storageRemove(STORAGE_KEYS.CONNECTIONS_QUEUE);
+}
+
 // ─── Identity ──────────────────────────────────────────────────────────────
 
 export async function getMyIdentity() {

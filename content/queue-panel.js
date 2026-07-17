@@ -15,11 +15,22 @@
 import { MSG } from '../utils/constants.js';
 import { extractFeedPosts } from './post-extractor.js';
 import { extractTopContentPosts, isTopContentPage } from './topcontent-extractor.js';
+import { extractConnections } from './connections-extractor.js';
 import { copyToClipboard } from '../utils/dom-helpers.js';
 import logger from '../utils/logger.js';
 
 const HOST_ID = 'liar-queue-host';
 let _open = false;
+let _tab = 'comments'; // 'comments' | 'connections'
+
+// Inline SVG of the extension logo (lightning bolt in a speech bubble) — the
+// same motif as the toolbar icon. Inline so it needs no web_accessible_resource
+// or getURL, and stays crisp at any size. `size` and `bolt` colors are params.
+const LOGO = (size = 20, bubble = '#5cc3e8', bolt = '#ffffff') => `
+  <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:0 0 auto;">
+    <path d="M12 2.2c-5.4 0-9.8 3.8-9.8 8.5 0 2.6 1.4 5 3.6 6.5l-.8 3.5c-.1.5.4.9.9.6l3.9-2.2c.7.1 1.5.2 2.2.2 5.4 0 9.8-3.8 9.8-8.6S17.4 2.2 12 2.2z" fill="${bubble}"/>
+    <path d="M12.7 6.5l-3.4 5h2.2l-.6 4 3.6-5.2h-2.3z" fill="${bolt}"/>
+  </svg>`;
 
 const CSS = `
   /* Reset so LinkedIn's page cascade can't leak in (font, color, line-height). */
@@ -31,7 +42,8 @@ const CSS = `
   /* Fixed dark theme — high contrast, self-contained, doesn't depend on the
      viewer's OS theme or LinkedIn's. Every text color is set explicitly. */
   .launcher {
-    position: fixed; right: 24px; bottom: 24px; z-index: 2147483000;
+    /* Sit ABOVE LinkedIn's own messaging bar (bottom-right) so they don't overlap. */
+    position: fixed; right: 24px; bottom: 84px; z-index: 2147483000;
     display: inline-flex; align-items: center; gap: 8px;
     padding: 12px 18px; border-radius: 999px; border: none; cursor: pointer;
     background: linear-gradient(135deg, #5cc3e8, #3b9dbf); color: #ffffff;
@@ -64,11 +76,15 @@ const CSS = `
   @keyframes pop { from { opacity:0; transform: scale(.96);} to { opacity:1; transform:none;} }
 
   .head { display:flex; align-items:center; gap:10px; padding:16px 18px; border-bottom:1px solid rgba(255,255,255,.1); }
-  .head h3 { margin:0; font-size:15px; font-weight:700; flex:1; color:#ffffff; }
+  .head h3 { margin:0; font-size:15px; font-weight:700; flex:1; color:#ffffff; display:flex; align-items:center; gap:8px; }
   .head button { background:none; border:none; cursor:pointer; color:#c6d3dd; font-size:20px; line-height:1; padding:2px 6px; border-radius:6px; }
   .head button:hover { color:#fff; background:rgba(255,255,255,.1); }
 
-  .toolbar { display:flex; gap:8px; padding:12px 18px; border-bottom:1px solid rgba(255,255,255,.1); flex-wrap:wrap; }
+  .tabs { display:flex; gap:4px; padding:8px 14px 0; border-bottom:1px solid rgba(255,255,255,.1); }
+  .tab { flex:1; background:none; border:none; cursor:pointer; color:#9fb0bd; font-size:13px; font-weight:700; padding:9px 8px; border-radius:8px 8px 0 0; border-bottom:2px solid transparent; }
+  .tab:hover { color:#dbe6ee; }
+  .tab.active { color:#fff; border-bottom-color:#5cc3e8; }
+  .toolbar { display:flex; gap:8px; padding:12px 18px; border-bottom:1px solid rgba(255,255,255,.1); flex-wrap:wrap; align-items:center; }
   .btn { border:none; border-radius:8px; padding:8px 13px; font-size:13px; font-weight:700; cursor:pointer; }
   .btn-primary { background:#5cc3e8; color:#0c1a22; }
   .btn-primary:hover { filter:brightness(1.06); }
@@ -142,16 +158,46 @@ export class QueuePanel {
     if (_open) { this.renderPanel(queue); return; }
     this.root.innerHTML = `
       <button class="launcher" id="q-launch">
-        🚀 <span>Engagement</span> <span class="badge">${pending}</span>
+        ${LOGO(20, '#ffffff', '#3b9dbf')} <span>Engagement</span> <span class="badge">${pending}</span>
       </button>`;
     this.root.querySelector('#q-launch').onclick = () => { _open = true; this.renderLauncher(); };
   }
 
-  async renderPanel(queueArg) {
-    const { queue = [] } = queueArg ? { queue: queueArg } : await send(MSG.GET_QUEUE);
+  async renderPanel() {
+    const tab = _tab;
+    const body = tab === 'connections'
+      ? await this._connectionsBody()
+      : await this._commentsBody();
+
+    this.root.innerHTML = `
+      <div class="backdrop" id="q-backdrop">
+        <div class="panel" role="dialog" aria-label="LinkedIn Assistant">
+          <div class="head">
+            <h3>${LOGO(18, '#5cc3e8', '#0c1a22')} LinkedIn Assistant</h3>
+            <button id="q-min" title="Close">✕</button>
+          </div>
+          <div class="tabs">
+            <button class="tab ${tab === 'comments' ? 'active' : ''}" data-tab="comments">💬 Comments</button>
+            <button class="tab ${tab === 'connections' ? 'active' : ''}" data-tab="connections">🤝 Connections</button>
+          </div>
+          ${body}
+        </div>
+      </div>`;
+
+    const close = () => { _open = false; this.renderLauncher(); };
+    this.root.querySelector('#q-min').onclick = close;
+    this.root.querySelector('#q-backdrop').onclick = (e) => { if (e.target.id === 'q-backdrop') close(); };
+    this.root.querySelectorAll('.tab').forEach(t =>
+      t.onclick = () => { _tab = t.dataset.tab; this.renderPanel(); });
+
+    if (tab === 'connections') this._wireConnections();
+    else this._wireComments();
+  }
+
+  // ── Comments tab ────────────────────────────────────────────────────────
+  async _commentsBody() {
+    const { queue = [] } = await send(MSG.GET_QUEUE);
     const { counts = { today: 0, week: 0, total: 0 } } = await send(MSG.GET_COMMENTS_LOG);
-    // Keep done items visible in-session so the user can see progress, but
-    // sort them to the bottom.
     const items = queue.filter(q => q.status !== 'skipped')
       .sort((a, b) => (a.status === 'done' ? 1 : 0) - (b.status === 'done' ? 1 : 0));
     const rows = items.map(q => {
@@ -171,35 +217,22 @@ export class QueuePanel {
         <div class="acts">
           <button class="btn btn-ghost q-draft" data-id="${q.id}">${q.draftReply ? '↻ Redraft' : '✨ Draft'}</button>
           <button class="btn btn-primary q-go" data-id="${q.id}">📋 Copy & go to post</button>
-          <button class="btn ${done ? 'btn-ghost' : 'btn-ghost'} q-posted" data-id="${q.id}" ${done ? 'disabled' : ''}>✓ I posted this</button>
+          <button class="btn btn-ghost q-posted" data-id="${q.id}" ${done ? 'disabled' : ''}>✓ I posted this</button>
           <button class="btn btn-ghost q-skip" data-id="${q.id}">Skip</button>
         </div>
       </div>`;
     }).join('');
+    return `
+      <div class="toolbar">
+        <button class="btn btn-primary" id="q-build">＋ Build from this page</button>
+        <button class="btn btn-ghost" id="q-draftall">✨ Draft all</button>
+        <span class="pill" style="margin-left:auto;" title="Comments you've posted">${counts.today} today · ${counts.week} wk</span>
+      </div>
+      <div class="status" id="q-status">Copy a draft → comment on LinkedIn → tap “I posted this”.</div>
+      <div class="list">${rows || '<div class="empty">No comments queued.<br>Open your feed or a trending page, then <b>Build from this page</b>.</div>'}</div>`;
+  }
 
-    this.root.innerHTML = `
-      <div class="backdrop" id="q-backdrop">
-        <div class="panel" role="dialog" aria-label="Engagement Queue">
-          <div class="head">
-            <h3>🚀 Engagement Queue</h3>
-            <span class="pill" title="Comments you've posted">${counts.today} today · ${counts.week} this week</span>
-            <button id="q-min" title="Close">✕</button>
-          </div>
-          <div class="toolbar">
-            <button class="btn btn-primary" id="q-build">＋ Build from this page</button>
-            <button class="btn btn-ghost" id="q-draftall">✨ Draft all</button>
-          </div>
-          <div class="status" id="q-status">Copy a draft → comment on LinkedIn → tap “I posted this” to track it.</div>
-          <div class="list">${rows || '<div class="empty">Queue is empty.<br>Open your feed or a trending page, then click <b>Build from this page</b>.</div>'}</div>
-        </div>
-      </div>`;
-
-    const close = () => { _open = false; this.renderLauncher(); };
-    this.root.querySelector('#q-min').onclick = close;
-    // Click outside the panel (on the dim backdrop) closes it.
-    this.root.querySelector('#q-backdrop').onclick = (e) => {
-      if (e.target.id === 'q-backdrop') close();
-    };
+  _wireComments() {
     this.root.querySelector('#q-build').onclick = () => this.buildFromPage();
     this.root.querySelector('#q-draftall').onclick = () => this.draftAll();
     this.root.querySelectorAll('.q-draft').forEach(b => b.onclick = () => this.draftOne(b.dataset.id));
@@ -208,6 +241,117 @@ export class QueuePanel {
     this.root.querySelectorAll('.q-skip').forEach(b => b.onclick = () => this.skip(b.dataset.id));
     this.root.querySelectorAll('.draft').forEach(t =>
       t.onchange = () => send(MSG.UPDATE_QUEUE_ITEM, { id: t.dataset.id, patch: { draftReply: t.value } }));
+  }
+
+  // ── Connections tab ───────────────────────────────────────────────────────
+  async _connectionsBody() {
+    const { connections = [] } = await send(MSG.GET_CONNECTIONS);
+    const items = connections.sort((a, b) => (a.status === 'done' ? 1 : 0) - (b.status === 'done' ? 1 : 0));
+    const rows = items.map(c => {
+      const done = c.status === 'done';
+      const copied = c.status === 'copied';
+      return `
+      <div class="row ${done ? 'done' : ''}" data-id="${c.id}">
+        <div class="meta">
+          <span class="who">${esc(c.name || 'there')}</span>
+          ${c.connectedOn ? `<span class="pill">${esc(c.connectedOn)}</span>` : ''}
+          ${done ? '<span class="pill">✓ sent</span>' : copied ? '<span class="pill">copied</span>' : ''}
+        </div>
+        ${c.headline ? `<p class="snip muted">${esc(c.headline.slice(0, 110))}</p>` : ''}
+        <textarea class="cdraft" data-id="${c.id}" placeholder="Click “Draft” for a personalized note…">${esc(c.draftMessage || '')}</textarea>
+        <div class="acts">
+          <button class="btn btn-ghost c-draft" data-id="${c.id}">${c.draftMessage ? '↻ Redraft' : '✨ Draft'}</button>
+          <button class="btn btn-primary c-go" data-id="${c.id}" data-path="${esc(c.profilePath || '')}">📋 Copy & open chat</button>
+          <button class="btn btn-ghost c-sent" data-id="${c.id}" ${done ? 'disabled' : ''}>✓ I sent it</button>
+          <button class="btn btn-ghost c-skip" data-id="${c.id}">Skip</button>
+        </div>
+      </div>`;
+    }).join('');
+    return `
+      <div class="toolbar">
+        <button class="btn btn-primary" id="c-scan">＋ Scan my connections</button>
+        <button class="btn btn-ghost" id="c-draftall">✨ Draft all</button>
+      </div>
+      <div class="status" id="q-status">Open your Connections page, Scan, Draft → Copy & open chat → paste & Send yourself.</div>
+      <div class="list">${rows || '<div class="empty">No connections queued.<br>Open your <b>Connections</b> page, then <b>Scan my connections</b>.</div>'}</div>`;
+  }
+
+  _wireConnections() {
+    this.root.querySelector('#c-scan').onclick = () => this.scanConnections();
+    this.root.querySelector('#c-draftall').onclick = () => this.draftAllConnections();
+    this.root.querySelectorAll('.c-draft').forEach(b => b.onclick = () => this.draftConnection(b.dataset.id));
+    this.root.querySelectorAll('.c-go').forEach(b => b.onclick = () => this.openChat(b.dataset.id, b.dataset.path));
+    this.root.querySelectorAll('.c-sent').forEach(b => b.onclick = () => this.markSent(b.dataset.id));
+    this.root.querySelectorAll('.c-skip').forEach(b => b.onclick = () => this.skipConnection(b.dataset.id));
+    this.root.querySelectorAll('.cdraft').forEach(t =>
+      t.onchange = () => send(MSG.UPDATE_CONNECTION, { id: t.dataset.id, patch: { draftMessage: t.value } }));
+  }
+
+  async scanConnections() {
+    this.status('Scanning your connections page…');
+    if (!/linkedin\.com\/mynetwork\/.*connections/i.test(location.href)) {
+      this.status('Open your Connections page first (My Network → Connections), then Scan.');
+      return;
+    }
+    const conns = extractConnections(document);
+    if (!conns.length) { this.status('No connections found here. Scroll the list and retry.'); return; }
+    const resp = await send(MSG.ADD_CONNECTIONS, { connections: conns });
+    this.status(`Found ${conns.length}, added ${resp?.added ?? 0} new.`);
+    this.renderPanel();
+  }
+
+  async draftConnection(id) {
+    const { connections = [] } = await send(MSG.GET_CONNECTIONS);
+    const c = connections.find(x => x.id === id);
+    if (!c) return;
+    const ta = this.root.querySelector(`.cdraft[data-id="${id}"]`);
+    if (ta) ta.value = 'Writing…';
+    const gen = await send(MSG.DRAFT_WELCOME, { name: c.name, headline: c.headline });
+    const msg = gen?.message || `(couldn't generate: ${gen?.error || 'unknown'})`;
+    if (ta) ta.value = msg;
+    await send(MSG.UPDATE_CONNECTION, { id, patch: { draftMessage: msg } });
+  }
+
+  async draftAllConnections() {
+    const { connections = [] } = await send(MSG.GET_CONNECTIONS);
+    const pending = connections.filter(c => c.status !== 'skipped' && !c.draftMessage);
+    if (!pending.length) { this.status('All connections already drafted.'); return; }
+    let n = 0;
+    for (const c of pending) {
+      this.status(`Drafting ${n + 1} of ${pending.length}…`);
+      const gen = await send(MSG.DRAFT_WELCOME, { name: c.name, headline: c.headline });
+      if (gen?.message) await send(MSG.UPDATE_CONNECTION, { id: c.id, patch: { draftMessage: gen.message } });
+      n++;
+    }
+    this.status(`Drafted ${n}. Review, then Copy & open chat.`);
+    this.renderPanel();
+  }
+
+  async openChat(id, profilePath) {
+    const { connections = [] } = await send(MSG.GET_CONNECTIONS);
+    const c = connections.find(x => x.id === id);
+    const ta = this.root.querySelector(`.cdraft[data-id="${id}"]`);
+    const msg = (ta?.value || c?.draftMessage || '').trim();
+    if (msg) {
+      const ok = await copyToClipboard(msg);
+      this.status(ok ? 'Copied ✓ — paste in the chat and Send, then tap “I sent it”.' : 'Copy failed — select and copy manually.');
+    }
+    await send(MSG.UPDATE_CONNECTION, { id, patch: { status: 'copied' } });
+    // Open their profile with the message overlay (user sends manually).
+    const path = profilePath || c?.profilePath;
+    if (path) window.open(`https://www.linkedin.com${path}/`, '_blank', 'noopener');
+    this.renderPanel();
+  }
+
+  async markSent(id) {
+    await send(MSG.UPDATE_CONNECTION, { id, patch: { status: 'done' } });
+    this.status('Marked sent ✓');
+    this.renderPanel();
+  }
+
+  async skipConnection(id) {
+    await send(MSG.UPDATE_CONNECTION, { id, patch: { status: 'skipped' } });
+    this.renderPanel();
   }
 
   status(msg) { const s = this.root.querySelector('#q-status'); if (s) s.textContent = msg || ''; }

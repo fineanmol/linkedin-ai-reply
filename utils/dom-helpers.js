@@ -738,8 +738,21 @@ export function getCommentElements(postEl) {
         current = current.parentElement;
       }
     }
+    // Only treat this as a genuine anchor BREAK (worth warning about) when the
+    // page clearly HAS comment-text anchors present, yet Strategy 1-3 still
+    // resolved nothing. If no comment-text anchors exist at all, this is almost
+    // always a timing case (comments not lazy-loaded yet) — NOT a DOM change —
+    // so we stay quiet to avoid crying wolf.
     if (commentEls.length > 0) {
-      logger.warn('getCommentElements: primary anchors FAILED — used structural fallback (Strategy 4). LinkedIn DOM likely changed; update DETECTION anchors in constants.js.');
+      const anchorsPresent = qsAll(
+        sel([...DETECTION.COMMENT_COMMENTARY, ...DETECTION.EXPANDABLE_TEXT]),
+        postEl
+      ).length > 0;
+      if (anchorsPresent) {
+        logger.warn('getCommentElements: comment-text anchors are present but primary strategies resolved none — used structural fallback (Strategy 4). LinkedIn DOM may have changed; check DETECTION anchors in constants.js.');
+      } else {
+        logger.log('getCommentElements: used structural fallback (Strategy 4) — no comment-text anchors on page yet (likely still loading).');
+      }
     }
   }
 
