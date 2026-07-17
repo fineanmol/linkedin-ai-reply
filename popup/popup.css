@@ -1,6 +1,7 @@
 /* popup.css */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+/* No webfont @import — MV3 CSP blocks it and it silently fails. Use the
+   system font stack, which is crisp and native on every platform. */
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -24,7 +25,7 @@ body {
   width: 320px;
   background: var(--bg);
   color: var(--text);
-  font-family: 'Inter', -apple-system, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   font-size: 14px;
   line-height: 1.5;
 }
@@ -241,6 +242,26 @@ body {
 .btn-primary:hover {
   filter: brightness(0.95);
   transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background: var(--bg2);
+  color: var(--accent-dark);
+  border: 1px solid var(--border);
+  margin-top: 8px;
+}
+
+.btn-secondary:hover {
+  background: var(--bg3);
+}
+
+/* "Open your feed first" style hint under the build button */
+.queue-hint {
+  font-size: 11px;
+  color: var(--text3);
+  text-align: center;
+  margin: 8px 2px 0;
+  line-height: 1.4;
 }
 
 /* Footer */

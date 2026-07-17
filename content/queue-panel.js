@@ -33,84 +33,143 @@ const LOGO = (size = 20, bubble = '#5cc3e8', bolt = '#ffffff') => `
   </svg>`;
 
 const CSS = `
-  /* Reset so LinkedIn's page cascade can't leak in (font, color, line-height). */
-  :host { all: initial; }
+  /* ── Design tokens ─────────────────────────────────────────────────────
+     Deep blue-biased ink ground (chosen, not a default grey), single sky-blue
+     accent, semantic mint/amber for state. Self-contained dark theme so it
+     reads consistently regardless of LinkedIn's or the OS theme. */
+  :host {
+    all: initial;
+    --ink:      #0f1620;   /* deepest ground */
+    --surface:  #18232f;   /* panel */
+    --raised:   #202e3d;   /* rows, inputs */
+    --line:     rgba(255,255,255,.08);
+    --line-2:   rgba(255,255,255,.14);
+    --text:     #eef4f8;
+    --text-dim: #9fb1c0;
+    --text-mut: #6f8395;
+    --accent:   #5cc3e8;   /* sky blue — the one accent */
+    --accent-ink:#08161d;
+    --accent-soft: rgba(92,195,232,.14);
+    --good:     #5fcf9e;   /* mint — done/sent */
+    --warn:     #e6b143;   /* amber — pending/copied */
+    --danger:   #e9736f;
+    --shadow:   0 24px 70px rgba(0,0,0,.55);
+    --r:        14px;
+  }
   :host, :host * {
     box-sizing: border-box;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  }
-  /* Fixed dark theme — high contrast, self-contained, doesn't depend on the
-     viewer's OS theme or LinkedIn's. Every text color is set explicitly. */
-  .launcher {
-    /* Sit ABOVE LinkedIn's own messaging bar (bottom-right) so they don't overlap. */
-    position: fixed; right: 24px; bottom: 84px; z-index: 2147483000;
-    display: inline-flex; align-items: center; gap: 8px;
-    padding: 12px 18px; border-radius: 999px; border: none; cursor: pointer;
-    background: linear-gradient(135deg, #5cc3e8, #3b9dbf); color: #ffffff;
-    font-size: 14px; font-weight: 700; box-shadow: 0 6px 22px rgba(0,0,0,.35);
-    transition: transform .15s ease, box-shadow .15s ease;
-  }
-  .launcher:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(0,0,0,.42); }
-  .launcher .badge {
-    background: #ffffff; color: #1e6f8c; border-radius: 999px; min-width: 22px;
-    height: 22px; padding: 0 7px; font-size: 12px; display: inline-flex;
-    align-items: center; justify-content: center; font-weight: 800;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-variant-ligatures: none;
   }
 
-  /* Centered modal + dimmed backdrop so you clearly see what's queued. */
+  /* ── Launcher (collapsed) ─────────────────────────────────────────────── */
+  .launcher {
+    position: fixed; right: 24px; bottom: 92px; z-index: 2147483000;
+    display: inline-flex; align-items: center; gap: 9px;
+    padding: 11px 16px 11px 13px; border-radius: 999px; border: none; cursor: pointer;
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--line-2);
+    font-size: 13.5px; font-weight: 650; letter-spacing: .01em;
+    box-shadow: 0 8px 24px rgba(0,0,0,.4);
+    transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+  }
+  .launcher:hover { transform: translateY(-2px); box-shadow: 0 14px 32px rgba(0,0,0,.5); border-color: var(--accent); }
+  .launcher .badge {
+    background: var(--accent); color: var(--accent-ink); border-radius: 999px;
+    min-width: 20px; height: 20px; padding: 0 6px; font-size: 12px;
+    display: inline-flex; align-items: center; justify-content: center; font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+  .launcher .badge.zero { background: var(--raised); color: var(--text-mut); }
+
+  /* ── Modal ─────────────────────────────────────────────────────────────── */
   .backdrop {
     position: fixed; inset: 0; z-index: 2147483000;
-    background: rgba(16, 24, 33, .55);
+    background: rgba(6,11,16,.62); backdrop-filter: blur(2px);
     display: flex; align-items: center; justify-content: center;
-    animation: fade .15s ease-out;
+    animation: fade .14s ease-out;
   }
   @keyframes fade { from { opacity:0 } to { opacity:1 } }
   .panel {
-    width: 460px; max-width: calc(100vw - 40px); max-height: 82vh;
+    width: 468px; max-width: calc(100vw - 40px); max-height: 84vh;
     display: flex; flex-direction: column;
-    background: #17212b; color: #eaf1f6;
-    border: 1px solid rgba(255,255,255,.12);
-    border-radius: 16px; box-shadow: 0 24px 70px rgba(0,0,0,.5); overflow: hidden;
-    animation: pop .18s ease-out;
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--line-2); border-radius: var(--r);
+    box-shadow: var(--shadow); overflow: hidden;
+    animation: pop .18s cubic-bezier(.2,.8,.2,1);
   }
-  @keyframes pop { from { opacity:0; transform: scale(.96);} to { opacity:1; transform:none;} }
+  @keyframes pop { from { opacity:0; transform: translateY(8px) scale(.98);} to { opacity:1; transform:none;} }
+  @media (prefers-reduced-motion: reduce) { .backdrop, .panel { animation: none; } }
 
-  .head { display:flex; align-items:center; gap:10px; padding:16px 18px; border-bottom:1px solid rgba(255,255,255,.1); }
-  .head h3 { margin:0; font-size:15px; font-weight:700; flex:1; color:#ffffff; display:flex; align-items:center; gap:8px; }
-  .head button { background:none; border:none; cursor:pointer; color:#c6d3dd; font-size:20px; line-height:1; padding:2px 6px; border-radius:6px; }
-  .head button:hover { color:#fff; background:rgba(255,255,255,.1); }
+  /* ── Header ────────────────────────────────────────────────────────────── */
+  .head { display:flex; align-items:center; gap:10px; padding:15px 16px; }
+  .head .brand { display:flex; align-items:center; gap:9px; flex:1; }
+  .head h3 { margin:0; font-size:14.5px; font-weight:700; color:var(--text); letter-spacing:.01em; }
+  .head .x { background:none; border:none; cursor:pointer; color:var(--text-dim); width:30px; height:30px; border-radius:8px; font-size:17px; line-height:1; display:flex; align-items:center; justify-content:center; transition:.12s; }
+  .head .x:hover { color:var(--text); background:var(--raised); }
 
-  .tabs { display:flex; gap:4px; padding:8px 14px 0; border-bottom:1px solid rgba(255,255,255,.1); }
-  .tab { flex:1; background:none; border:none; cursor:pointer; color:#9fb0bd; font-size:13px; font-weight:700; padding:9px 8px; border-radius:8px 8px 0 0; border-bottom:2px solid transparent; }
-  .tab:hover { color:#dbe6ee; }
-  .tab.active { color:#fff; border-bottom-color:#5cc3e8; }
-  .toolbar { display:flex; gap:8px; padding:12px 18px; border-bottom:1px solid rgba(255,255,255,.1); flex-wrap:wrap; align-items:center; }
-  .btn { border:none; border-radius:8px; padding:8px 13px; font-size:13px; font-weight:700; cursor:pointer; }
-  .btn-primary { background:#5cc3e8; color:#0c1a22; }
-  .btn-primary:hover { filter:brightness(1.06); }
-  .btn-ghost { background:rgba(92,195,232,.16); color:#8fdcf5; }
-  .btn-ghost:hover { background:rgba(92,195,232,.28); }
-  .btn:disabled { opacity:.45; cursor:not-allowed; }
+  /* ── Segmented tab control ─────────────────────────────────────────────── */
+  .tabs { display:flex; gap:4px; margin:0 14px 12px; padding:4px; background:var(--ink); border-radius:10px; }
+  .tab { flex:1; background:none; border:none; cursor:pointer; color:var(--text-dim); font-size:12.5px; font-weight:650; padding:8px 6px; border-radius:7px; transition:.14s; display:flex; align-items:center; justify-content:center; gap:6px; }
+  .tab:hover { color:var(--text); }
+  .tab.active { color:var(--accent-ink); background:var(--accent); }
 
-  .list { overflow-y:auto; padding:10px; }
-  .row { border:1px solid rgba(255,255,255,.1); border-radius:12px; padding:12px 14px; margin:8px 4px; background:rgba(255,255,255,.02); }
-  .row.done { opacity:.5; }
-  .meta { display:flex; gap:6px; align-items:center; font-size:12.5px; margin-bottom:6px; flex-wrap:wrap; color:#c6d3dd; }
-  .who { font-weight:700; color:#ffffff; }
-  .pill { background:rgba(92,195,232,.2); color:#8fdcf5; border-radius:999px; padding:2px 8px; font-size:11px; font-weight:700; }
-  .snip { font-size:13px; line-height:1.45; margin:0 0 8px; color:#dbe6ee; }
-  .muted { color:#9fb0bd; }
+  /* ── Toolbar + status ──────────────────────────────────────────────────── */
+  .toolbar { display:flex; gap:8px; padding:0 16px 10px; flex-wrap:wrap; align-items:center; }
+  .toolbar .spacer { flex:1; }
+  .status { padding:0 16px 10px; font-size:11.5px; line-height:1.4; color:var(--text-mut); }
+
+  /* ── Buttons ───────────────────────────────────────────────────────────── */
+  .btn { border:none; border-radius:9px; padding:8px 13px; font-size:12.5px; font-weight:650; cursor:pointer; transition:.13s; display:inline-flex; align-items:center; gap:5px; white-space:nowrap; }
+  .btn:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .btn-primary { background:var(--accent); color:var(--accent-ink); }
+  .btn-primary:hover { filter:brightness(1.07); }
+  .btn-ghost { background:var(--raised); color:var(--text); }
+  .btn-ghost:hover { background:var(--line-2); }
+  .btn-quiet { background:none; color:var(--text-dim); padding:8px 10px; }
+  .btn-quiet:hover { color:var(--text); background:var(--raised); }
+  .btn:disabled { opacity:.4; cursor:not-allowed; }
+  .btn.sm { padding:6px 10px; font-size:12px; }
+
+  /* ── List + rows (left status stripe encodes state at a glance) ────────── */
+  .list { overflow-y:auto; padding:4px 12px 12px; display:flex; flex-direction:column; gap:9px; }
+  .list::-webkit-scrollbar { width:8px; } .list::-webkit-scrollbar-thumb { background:var(--line-2); border-radius:8px; }
+  .row {
+    position:relative; border:1px solid var(--line); border-radius:11px;
+    padding:12px 13px 12px 15px; background:var(--raised);
+    transition:border-color .14s;
+  }
+  .row::before { content:''; position:absolute; left:0; top:10px; bottom:10px; width:3px; border-radius:3px; background:var(--text-mut); }
+  .row.st-new::before    { background:var(--accent); }
+  .row.st-copied::before { background:var(--warn); }
+  .row.st-done::before   { background:var(--good); }
+  .row.st-done { opacity:.6; }
+  .row:hover { border-color:var(--line-2); }
+
+  .meta { display:flex; gap:7px; align-items:center; margin-bottom:7px; flex-wrap:wrap; }
+  .who { font-weight:700; color:var(--text); font-size:13.5px; }
+  .pill { border-radius:999px; padding:2px 8px; font-size:10.5px; font-weight:700; letter-spacing:.02em; text-transform:uppercase; }
+  .pill.match { background:var(--accent-soft); color:var(--accent); }
+  .pill.date  { background:rgba(255,255,255,.06); color:var(--text-dim); text-transform:none; letter-spacing:0; font-weight:600; }
+  .pill.done  { background:rgba(95,207,158,.16); color:var(--good); }
+  .pill.copied{ background:rgba(230,177,67,.16); color:var(--warn); }
+  .snip { font-size:12.5px; line-height:1.5; margin:0 0 8px; color:var(--text-dim); }
+  .snip.head { color:var(--text-mut); font-style:italic; }
+  .muted { color:var(--text-mut); }
+  .why { font-size:11px; color:var(--text-mut); margin:0 0 8px; }
+
   .draft {
-    width:100%; min-height:60px; border:1px solid rgba(255,255,255,.16);
-    border-radius:8px; padding:9px; font-size:13px; line-height:1.45; resize:vertical;
-    background:#0e1720; color:#eaf1f6;
+    width:100%; min-height:62px; border:1px solid var(--line-2); border-radius:9px;
+    padding:9px 10px; font-size:12.5px; line-height:1.5; resize:vertical;
+    background:var(--ink); color:var(--text);
   }
-  .draft::placeholder { color:#7d8b96; }
-  .draft:focus { outline:none; border-color:#5cc3e8; box-shadow:0 0 0 1px #5cc3e8; }
+  .draft::placeholder { color:var(--text-mut); }
+  .draft:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-soft); }
   .acts { display:flex; gap:6px; margin-top:9px; flex-wrap:wrap; }
-  .empty { padding:30px 18px; text-align:center; font-size:13.5px; line-height:1.5; color:#c6d3dd; }
-  .empty b { color:#fff; }
-  .status { padding:8px 18px; font-size:12px; color:#9fb0bd; border-bottom:1px solid rgba(255,255,255,.06); }
+
+  .empty { padding:34px 22px; text-align:center; font-size:13px; line-height:1.6; color:var(--text-dim); }
+  .empty .big { font-size:26px; margin-bottom:8px; opacity:.8; }
+  .empty b { color:var(--text); font-weight:700; }
 `;
 
 function send(type, payload) {
@@ -157,8 +216,9 @@ export class QueuePanel {
     const pending = queue.filter(q => q.status !== 'skipped' && q.status !== 'done').length;
     if (_open) { this.renderPanel(queue); return; }
     this.root.innerHTML = `
-      <button class="launcher" id="q-launch">
-        ${LOGO(20, '#ffffff', '#3b9dbf')} <span>Engagement</span> <span class="badge">${pending}</span>
+      <button class="launcher" id="q-launch" title="LinkedIn Assistant">
+        ${LOGO(20, '#5cc3e8', '#08161d')} <span>Assistant</span>
+        <span class="badge ${pending ? '' : 'zero'}">${pending}</span>
       </button>`;
     this.root.querySelector('#q-launch').onclick = () => { _open = true; this.renderLauncher(); };
   }
@@ -173,12 +233,12 @@ export class QueuePanel {
       <div class="backdrop" id="q-backdrop">
         <div class="panel" role="dialog" aria-label="LinkedIn Assistant">
           <div class="head">
-            <h3>${LOGO(18, '#5cc3e8', '#0c1a22')} LinkedIn Assistant</h3>
-            <button id="q-min" title="Close">✕</button>
+            <div class="brand">${LOGO(20, '#5cc3e8', '#08161d')}<h3>LinkedIn Assistant</h3></div>
+            <button class="x" id="q-min" title="Close" aria-label="Close">✕</button>
           </div>
-          <div class="tabs">
-            <button class="tab ${tab === 'comments' ? 'active' : ''}" data-tab="comments">💬 Comments</button>
-            <button class="tab ${tab === 'connections' ? 'active' : ''}" data-tab="connections">🤝 Connections</button>
+          <div class="tabs" role="tablist">
+            <button class="tab ${tab === 'comments' ? 'active' : ''}" data-tab="comments" role="tab">Comments</button>
+            <button class="tab ${tab === 'connections' ? 'active' : ''}" data-tab="connections" role="tab">Connections</button>
           </div>
           ${body}
         </div>
@@ -202,34 +262,34 @@ export class QueuePanel {
       .sort((a, b) => (a.status === 'done' ? 1 : 0) - (b.status === 'done' ? 1 : 0));
     const rows = items.map(q => {
       const rel = q.relevance != null ? `${Math.round(q.relevance * 100)}%` : '';
-      const done = q.status === 'done';
-      const copied = q.status === 'copied';
+      const st = q.status === 'done' ? 'done' : q.status === 'copied' ? 'copied' : 'new';
       return `
-      <div class="row ${done ? 'done' : ''}" data-id="${q.id}">
+      <div class="row st-${st}" data-id="${q.id}">
         <div class="meta">
           <span class="who">${esc(q.authorName || 'Someone')}</span>
-          ${rel ? `<span class="pill">${rel} match</span>` : ''}
-          ${done ? '<span class="pill">✓ posted</span>' : copied ? '<span class="pill">copied</span>' : ''}
+          ${rel ? `<span class="pill match">${rel} match</span>` : ''}
+          ${st === 'done' ? '<span class="pill done">✓ posted</span>' : st === 'copied' ? '<span class="pill copied">copied</span>' : ''}
         </div>
-        <p class="snip">${esc((q.postText || '').slice(0, 140))}${(q.postText || '').length > 140 ? '…' : ''}</p>
-        ${q.whyEngage ? `<div class="muted" style="font-size:11px;margin-bottom:6px;">Why: ${esc(q.whyEngage)}</div>` : ''}
-        <textarea class="draft" data-id="${q.id}" placeholder="Click “Draft” to write a comment…">${esc(q.draftReply || '')}</textarea>
+        <p class="snip">${esc((q.postText || '').slice(0, 150))}${(q.postText || '').length > 150 ? '…' : ''}</p>
+        ${q.whyEngage ? `<p class="why">Why engage: ${esc(q.whyEngage)}</p>` : ''}
+        <textarea class="draft" data-id="${q.id}" placeholder="Click Draft to write a comment in your voice…">${esc(q.draftReply || '')}</textarea>
         <div class="acts">
-          <button class="btn btn-ghost q-draft" data-id="${q.id}">${q.draftReply ? '↻ Redraft' : '✨ Draft'}</button>
-          <button class="btn btn-primary q-go" data-id="${q.id}">📋 Copy & go to post</button>
-          <button class="btn btn-ghost q-posted" data-id="${q.id}" ${done ? 'disabled' : ''}>✓ I posted this</button>
-          <button class="btn btn-ghost q-skip" data-id="${q.id}">Skip</button>
+          <button class="btn btn-ghost sm q-draft" data-id="${q.id}">${q.draftReply ? 'Redraft' : 'Draft'}</button>
+          <button class="btn btn-primary sm q-go" data-id="${q.id}">Copy &amp; go to post</button>
+          <button class="btn btn-ghost sm q-posted" data-id="${q.id}" ${st === 'done' ? 'disabled' : ''}>Mark posted</button>
+          <button class="btn btn-quiet sm q-skip" data-id="${q.id}">Skip</button>
         </div>
       </div>`;
     }).join('');
     return `
       <div class="toolbar">
-        <button class="btn btn-primary" id="q-build">＋ Build from this page</button>
-        <button class="btn btn-ghost" id="q-draftall">✨ Draft all</button>
-        <span class="pill" style="margin-left:auto;" title="Comments you've posted">${counts.today} today · ${counts.week} wk</span>
+        <button class="btn btn-primary" id="q-build">Build from this page</button>
+        <button class="btn btn-ghost" id="q-draftall">Draft all</button>
+        <span class="spacer"></span>
+        <span class="pill date" title="Comments you've posted">${counts.today} today · ${counts.week} wk</span>
       </div>
-      <div class="status" id="q-status">Copy a draft → comment on LinkedIn → tap “I posted this”.</div>
-      <div class="list">${rows || '<div class="empty">No comments queued.<br>Open your feed or a trending page, then <b>Build from this page</b>.</div>'}</div>`;
+      <div class="status" id="q-status">Draft → Copy &amp; go to post → paste, post, then Mark posted.</div>
+      <div class="list">${rows || '<div class="empty"><div class="big">💬</div>No comments queued yet.<br>Open your feed or a trending page, then hit <b>Build from this page</b>.</div>'}</div>`;
   }
 
   _wireComments() {
@@ -248,31 +308,30 @@ export class QueuePanel {
     const { connections = [] } = await send(MSG.GET_CONNECTIONS);
     const items = connections.sort((a, b) => (a.status === 'done' ? 1 : 0) - (b.status === 'done' ? 1 : 0));
     const rows = items.map(c => {
-      const done = c.status === 'done';
-      const copied = c.status === 'copied';
+      const st = c.status === 'done' ? 'done' : c.status === 'copied' ? 'copied' : 'new';
       return `
-      <div class="row ${done ? 'done' : ''}" data-id="${c.id}">
+      <div class="row st-${st}" data-id="${c.id}">
         <div class="meta">
           <span class="who">${esc(c.name || 'there')}</span>
-          ${c.connectedOn ? `<span class="pill">${esc(c.connectedOn)}</span>` : ''}
-          ${done ? '<span class="pill">✓ sent</span>' : copied ? '<span class="pill">copied</span>' : ''}
+          ${c.connectedOn ? `<span class="pill date">${esc(c.connectedOn)}</span>` : ''}
+          ${st === 'done' ? '<span class="pill done">✓ sent</span>' : st === 'copied' ? '<span class="pill copied">copied</span>' : ''}
         </div>
-        ${c.headline ? `<p class="snip muted">${esc(c.headline.slice(0, 110))}</p>` : ''}
-        <textarea class="cdraft" data-id="${c.id}" placeholder="Click “Draft” for a personalized note…">${esc(c.draftMessage || '')}</textarea>
+        ${c.headline ? `<p class="snip head">${esc(c.headline.slice(0, 120))}</p>` : ''}
+        <textarea class="cdraft" data-id="${c.id}" placeholder="Click Draft — reads their profile + recent posts…">${esc(c.draftMessage || '')}</textarea>
         <div class="acts">
-          <button class="btn btn-ghost c-draft" data-id="${c.id}">${c.draftMessage ? '↻ Redraft' : '✨ Draft'}</button>
-          <button class="btn btn-primary c-go" data-id="${c.id}" data-path="${esc(c.profilePath || '')}">📋 Copy & open chat</button>
-          <button class="btn btn-ghost c-sent" data-id="${c.id}" ${done ? 'disabled' : ''}>✓ I sent it</button>
-          <button class="btn btn-ghost c-skip" data-id="${c.id}">Skip</button>
+          <button class="btn btn-ghost sm c-draft" data-id="${c.id}">${c.draftMessage ? 'Redraft' : 'Draft'}</button>
+          <button class="btn btn-primary sm c-go" data-id="${c.id}" data-path="${esc(c.profilePath || '')}">Copy &amp; open chat</button>
+          <button class="btn btn-ghost sm c-sent" data-id="${c.id}" ${st === 'done' ? 'disabled' : ''}>Mark sent</button>
+          <button class="btn btn-quiet sm c-skip" data-id="${c.id}">Skip</button>
         </div>
       </div>`;
     }).join('');
     return `
       <div class="toolbar">
-        <button class="btn btn-primary" id="c-scan">＋ Scan my connections</button>
+        <button class="btn btn-primary" id="c-scan">Scan my connections</button>
       </div>
-      <div class="status" id="q-status">Scan → Draft (reads their profile + recent posts) → Copy &amp; open chat → paste &amp; Send yourself.</div>
-      <div class="list">${rows || '<div class="empty">No connections queued.<br>Open your <b>Connections</b> page, then <b>Scan my connections</b>.</div>'}</div>`;
+      <div class="status" id="q-status">On your Connections page: Scan → Draft (reads their profile) → Copy &amp; open chat → paste &amp; Send.</div>
+      <div class="list">${rows || '<div class="empty"><div class="big">🤝</div>No connections queued yet.<br>Open your <b>Connections</b> page, then hit <b>Scan my connections</b>.</div>'}</div>`;
   }
 
   _wireConnections() {
