@@ -7,7 +7,7 @@
 import { OllamaClient } from './ollama-client.js';
 import { GeminiClient } from './gemini-client.js';
 import { getSettings } from '../utils/storage.js';
-import { cleanReplyText } from './prompt-builder.js';
+import { cleanReplyText, humanizeReply } from './prompt-builder.js';
 import logger from '../utils/logger.js';
 
 export class LLMRouter {
@@ -61,7 +61,7 @@ export class LLMRouter {
           signal,
         });
         if (text) {
-          return { text: cleanReplyText(text), backend: 'ollama', model: settings.ollamaModel };
+          return { text: humanizeReply(cleanReplyText(text)), backend: 'ollama', model: settings.ollamaModel };
         }
       } catch (e) {
         logger.warn('LLMRouter: Ollama failed:', e.message);
@@ -81,7 +81,7 @@ export class LLMRouter {
         logger.log('LLMRouter: trying Gemini...', settings.geminiModel);
         const text = await gemini.chat({ messages, temperature: settings.temperature, signal });
         if (text) {
-          return { text: cleanReplyText(text), backend: 'gemini', model: settings.geminiModel };
+          return { text: humanizeReply(cleanReplyText(text)), backend: 'gemini', model: settings.geminiModel };
         }
       } catch (e) {
         logger.error('LLMRouter: Gemini failed:', e.message);

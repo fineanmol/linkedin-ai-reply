@@ -139,6 +139,16 @@ export function buildStyleContext(profile) {
     }
   }
 
+  // If we have essentially nothing to go on (no manual examples, no usable
+  // learned samples), give the model a concrete human-voice default instead of
+  // just dry fingerprint stats — otherwise it falls back to corporate-neutral.
+  const hasVoice = manualExamples?.trim() || uniqueSamples.length > 0;
+  if (!hasVoice) {
+    parts.push(
+      `\nNo writing samples yet, so write like a sharp, real professional talking to a peer: plain, direct, a bit informal. Short sentences. A clear opinion. No corporate polish. Sound like a person, not a brand.`
+    );
+  }
+
   return parts.join('\n');
 }
 

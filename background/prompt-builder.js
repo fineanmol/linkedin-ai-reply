@@ -36,42 +36,55 @@ export function buildSystemPrompt({ userName, styleContext, maxWords = 150 }) {
     targetDesc = `1 to 3 sentences, around 20-60 words`;
   }
 
-  return `You are writing a short LinkedIn comment reply on behalf of ${userName || 'the user'}.
+  return `You are ${userName || 'a real person'} writing a quick comment on LinkedIn. You are a real human, not an assistant. Write exactly how a sharp, busy professional actually types a comment on their phone.
 
 ${styleContext}
 
-MINDSET: Think of this as a quick, genuine reply — like what you'd type in 20 seconds scrolling LinkedIn on your phone. Not a blog post. Not an analysis. Just a direct, human thought.
+WHAT MAKES A COMMENT SOUND HUMAN (do these):
+- React to ONE specific thing in the post — quote a phrase, name the exact point, or pick the detail that stood out. Generic reactions to "the topic" are the #1 tell of a bot.
+- Add real substance: a specific technical point, a tradeoff, a counterexample, a sharp question, or "the part people miss is…". Have an actual opinion grounded in the post's topic.
+- Write like you talk. Contractions (I've, don't, that's). Start with "and" or "but" if that's natural. A short fragment is fine. One idea, said plainly.
+- It's okay to mildly disagree, add a caveat, or push the idea further. Real people aren't only agreeable.
 
-RULES:
-1. Output ONLY the reply text. Nothing else.
-2. Length: ${targetDesc}. Hard ceiling: ${maxWords} words. Shorter is always better. Do NOT pad.
-3. NEVER — under any circumstances — start with any of these openers or close variations of them:
-   "Thanks for the kind words", "I appreciate the kind words", "Thank you for the kind words",
-   "Thanks for sharing", "Thanks for this", "I appreciate you sharing",
-   "Great post", "Great insight", "Great question",
-   "Absolutely", "Totally", "Exactly", "100%",
-   "I completely agree", "I totally agree", "Couldn't agree more",
-   "That's a great point", "That's so true", "That's a really good point",
-   "Love this", "Love it", "So true", "Well said",
-   "This is spot on", "This is so important".
-   DO NOT use ANY variation of "kind words", "appreciate the", or "thanks for" as your first words.
-   Start directly with your actual thought or opinion.
-4. NEVER restate or summarize what the commenter said — they know what they wrote.
-5. NEVER add filler sentences. Every sentence must earn its place. If you can cut it without losing meaning, cut it.
-6. No Markdown. No asterisks, hashes, bullet points, or backticks. Plain text only.
-7. First person ("I", "me", "my"). Sound human and direct.
-8. No corporate buzzwords: leverage, synergy, paradigm shift, thought leadership, circle back, deep dive.
-9. No sign-off at the end.
-10. Match the tone and voice of the style examples — casual or formal, emoji or not.
-11. End with a complete sentence and terminal punctuation. Never cut off mid-thought.`;
+WHAT SCREAMS "AI" (never do these):
+- DO NOT invent a personal backstory or workplace. Never say "in our company", "our team", "our product", "at my company", "we found in production", "in my experience we…", or make up specific projects, metrics, or clients. You do not know where this person works or what they've built — fabricating it is dishonest and obvious. Make your point about the IDEA, not a made-up anecdote.
+- Vague praise with no substance: "great insight", "well said", "so true", "love this", "spot on", "couldn't agree more", "thanks for sharing", "great post/question". Never open with any of these or a variation.
+- Restating what the post already said back to them.
+- Corporate filler: leverage, synergy, paradigm, thought leadership, circle back, deep dive, "in today's fast-paced world", "game-changer", "resonates with me".
+- Perfectly balanced, hedged, essay-structured sentences. Em-dashes stacked for rhythm. Tricolon lists ("X, Y, and Z"). These read as machine-written.
+- Ending with a generic uplift ("excited to see where this goes", "the future is bright").
+
+HARD RULES:
+1. Output ONLY the comment text — no preamble, no quotes around it, no markdown.
+2. Length: ${targetDesc}. Ceiling ${maxWords} words. Shorter is better. Do not pad.
+3. First person. Plain text. No hashtags unless the style examples use them. No sign-off.
+4. Match the voice in the style examples above (formality, emoji use, sentence length). If there are none, default to concise and conversational.
+5. End on a complete sentence. Never trail off.
+
+Write the one comment you'd actually post — specific, opinionated, human.`;
 }
 
 // ─── User Prompt ───────────────────────────────────────────────────────────
 
-export function buildUserPrompt({ postContent, comment, intent }) {
+export function buildUserPrompt({ postContent, comment, intent, vary = false }) {
   const intentInstruction = INTENT_INSTRUCTIONS[intent] || INTENT_INSTRUCTIONS[INTENTS.GENERAL];
   const postSnippet = postContent || '(post content unavailable)';
   const commentText = comment.text || '(comment text unavailable)';
+
+  // Different "angles" to take on a post. On regenerate we pick one at random so
+  // repeated generations for the SAME post give genuinely different comments —
+  // each grounded in the post's content, not reworded boilerplate.
+  const ANGLES = [
+    'Name a concrete technical tradeoff or edge case related to a specific point in the post (about the idea — do NOT invent a personal anecdote or workplace).',
+    'Respectfully push back on or add a caveat to one specific claim in the post. Do NOT just agree.',
+    'Pick the single most interesting detail in the post and extend it one step further.',
+    'Ask one sharp, specific question about something the post left open.',
+    'Name the part most people overlook about this topic, tied to what the post actually said.',
+    'Share a short contrarian or "it depends" take on a specific point in the post.',
+  ];
+  const angleLine = vary
+    ? `\nANGLE FOR THIS ONE (make it clearly different from a plain agreement): ${ANGLES[Math.floor(Math.random() * ANGLES.length)]}`
+    : '';
 
   return `POST:
 """
@@ -84,8 +97,9 @@ ${commentText}
 """
 
 HOW TO REPLY: ${intentInstruction}
+Do NOT open with "I agree", "I think", "I've found", or any agreement/praise. Lead with the substance. Base the comment on what THIS post specifically says — reference a real detail from it.${angleLine}
 
-Write the reply now (short, direct, human):`;
+Write the one comment you'd actually post:`;
 }
 
 // ─── Relevance Scoring (engagement queue) ───────────────────────────────────
@@ -147,12 +161,46 @@ export function parseScoringResponse(raw, count) {
   }
 }
 
+// ─── Connection Welcome Message ──────────────────────────────────────────────
+
+/**
+ * Build messages for a short, human, personalized note to a NEW connection.
+ * The user reviews and sends it manually — this only drafts.
+ */
+export function buildWelcomeMessages({ userName, styleContext, name, headline }) {
+  const first = (name || '').trim().split(/\s+/)[0] || 'there';
+  const system = `You are ${userName || 'a real person'} writing a short first message to someone who just connected with you on LinkedIn. Write like a real human, not a template.
+
+${styleContext}
+
+WHAT MAKES IT WORK:
+- Warm, brief, specific. 1-2 sentences, ~15-35 words. Like a real note, not a pitch.
+- Reference something REAL from their headline/role if given — a genuine reason you're glad to connect.
+- Sound like a person typing quickly, not a marketer.
+
+NEVER:
+- "I'm excited to connect", "Thanks for connecting", "Great to be connected", "Looking forward to networking", "Let's stay in touch" — these are dead giveaways of a template.
+- No pitch, no ask, no "let me know if I can help", no links, no emojis unless the style examples use them.
+- Do NOT invent shared history or claim you've met.
+
+Output ONLY the message text.`;
+
+  const user = `New connection: ${name || 'this person'}${headline ? `\nTheir headline: "${headline}"` : ''}
+
+Write one short, genuine opening message to ${first}. Reference their work if the headline gives you something real. No template phrases.`;
+
+  return [
+    { role: 'system', content: system },
+    { role: 'user', content: user },
+  ];
+}
+
 // ─── Full Prompt Builder ────────────────────────────────────────────────────
 
 /**
  * Build a complete [{role, content}] message array for the LLM.
  */
-export function buildMessages({ userName, styleContext, postContent, comment, intent, maxWords = 150 }) {
+export function buildMessages({ userName, styleContext, postContent, comment, intent, maxWords = 150, vary = false }) {
   return [
     {
       role: 'system',
@@ -160,7 +208,7 @@ export function buildMessages({ userName, styleContext, postContent, comment, in
     },
     {
       role: 'user',
-      content: buildUserPrompt({ postContent, comment, intent }),
+      content: buildUserPrompt({ postContent, comment, intent, vary }),
     },
   ];
 }
@@ -196,4 +244,71 @@ export function cleanReplyText(rawText) {
     .join('\n');
 
   return t.trim();
+}
+
+/**
+ * humanizeReply — a light post-pass that strips the most common robotic tells
+ * that survive the prompt, WITHOUT rewriting the user's meaning. Runs on every
+ * generated comment before it's shown/copied.
+ */
+export function humanizeReply(text) {
+  if (!text) return '';
+  let t = text.trim();
+
+  // 1. Strip a generic praise/filler OPENER if the model still led with one.
+  //    e.g. "Great insight! The real..." → "The real..."
+  const OPENERS = [
+    'great post', 'great insight', 'great question', 'great point', 'great read',
+    'love this', 'love it', 'so true', 'well said', 'spot on', 'this is spot on',
+    'couldn\'t agree more', 'could not agree more', 'i completely agree', 'i totally agree',
+    'i agree', 'agreed', 'totally agree', 'absolutely', 'exactly this', 'exactly', '100%', 'this',
+    'thanks for sharing', 'thanks for this', 'thank you for sharing', 'i appreciate you sharing',
+    'this resonates', 'this really resonates', 'such a great', 'what a great',
+  ];
+  // Match "<opener><punct> <rest>" and drop the opener clause, keeping the rest.
+  const openerRe = new RegExp(
+    `^(?:${OPENERS.map(o => o.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b[\\s!,.–—-]*`,
+    'i'
+  );
+  const stripped = t.replace(openerRe, '').trimStart();
+  // Only apply if it left a real sentence behind (don't gut a 3-word reply).
+  if (stripped && stripped.split(/\s+/).length >= 4) {
+    // Capitalize the first letter ONLY if it's a lowercase plain word — never
+    // force-case an intentional term like "gRPC" or "iOS".
+    const first = stripped.charAt(0);
+    const looksLikeTechTerm = /[a-z][A-Z]/.test(stripped.slice(0, 4)); // e.g. gRPC, iOS
+    t = (!looksLikeTechTerm && /[a-z]/.test(first))
+      ? first.toUpperCase() + stripped.slice(1)
+      : stripped;
+  }
+
+  // 2. Safety net for fabricated workplace claims that slip past the prompt.
+  //    We can't know the user's real employer, so soften invented "we/our
+  //    company/team/production" phrasing into a neutral general voice rather
+  //    than let a false claim through. (Meaning is preserved; the fake
+  //    first-person-plural framing is removed.)
+  t = t
+    .replace(/\bin our (company|team|org|organi[sz]ation|product|production|codebase|stack)\b/gi, '')
+    .replace(/\bat (my|our) (company|team|org|organi[sz]ation)\b/gi, '')
+    .replace(/\bwe (found|saw|learned|noticed|discovered) (in|at) (production|our .*?)\b/gi, 'a common finding is')
+    .replace(/\bour (team|company|product|production|users|customers|clients)\b/gi, 'many teams');
+
+  // 3. Only convert an em-dash to a comma when it's used as a spaced aside
+  //    (the AI-cadence tell). Leave a single mid-word/tight dash alone.
+  t = t.replace(/\s+—\s+/g, ', ');
+
+  // 4. Drop a trailing generic-uplift sentence if present.
+  const UPLIFT = /\s*(excited to see where this goes|the future is (bright|exciting)|great things ahead|keep up the (great|good) work)\.?$/i;
+  t = t.replace(UPLIFT, '').trim();
+
+  // 5. Kill doubled spaces introduced by the edits.
+  t = t.replace(/\s{2,}/g, ' ').replace(/\s+([,.!?])/g, '$1').trim();
+
+  // 6. If an edit left the sentence starting lowercase, capitalize it (unless
+  //    it's an intentional tech term like gRPC/iOS).
+  if (t && /^[a-z]/.test(t) && !/^[a-z][A-Z]/.test(t.slice(0, 4))) {
+    t = t.charAt(0).toUpperCase() + t.slice(1);
+  }
+
+  return t;
 }
