@@ -351,36 +351,52 @@ export function getPostActor(postEl) {
   let profilePath = null;
   let headline = null;
 
-  // ── Primary (2026): the actor's accessible label ──────────────────────────
-  // The author block carries an aria-label like "Andrew Park Verified Profile
-  // 3rd+" or "Jane Doe • 2nd". This is the most reliable author signal now
-  // (the legacy .update-components-actor class is gone). Take the text BEFORE
-  // the "Verified Profile" / connection-degree / bullet marker.
+  // ── Primary (MOST authoritative): the post's control-menu / company label ──
+  // Every post has a control menu whose aria-label names the AUTHOR explicitly:
+  //   "Open control menu for post by Andrew Park"   (person)
+  //   "Open control menu for post by Notion" / "View company: Notion" (company)
+  // This is unambiguous — it can't be confused with a reactor or commenter,
+  // which was the bug (drafting about the wrong person). Use it first.
   for (const el of postEl.querySelectorAll('[aria-label]')) {
     const al = el.getAttribute('aria-label') || '';
-    const m = al.match(/^(.+?)\s+(?:Verified Profile|Premium Profile|•|·|,|\b(?:1st|2nd|3rd)\b)/i);
+    let m = al.match(/^Open control menu for post by (.+?)\s*$/i)
+         || al.match(/^View company:\s*(.+?)\s*$/i);
     if (m) {
       const candidate = m[1].trim();
-      if (candidate && candidate.length >= 2 && candidate.length <= 60 && !candidate.includes('|')) {
-        name = candidate;
-        break;
+      if (candidate && candidate.length >= 2 && candidate.length <= 80) { name = candidate; break; }
+    }
+  }
+
+  // ── Secondary: the actor's accessible label ("Jane Doe • 2nd", "X Verified Profile") ──
+  if (!name) {
+    for (const el of postEl.querySelectorAll('[aria-label]')) {
+      const al = el.getAttribute('aria-label') || '';
+      const m = al.match(/^(.+?)\s+(?:Verified Profile|Premium Profile|•|·|,|\b(?:1st|2nd|3rd)\b)/i);
+      if (m) {
+        const candidate = m[1].trim();
+        if (candidate && candidate.length >= 2 && candidate.length <= 60 && !candidate.includes('|')) {
+          name = candidate;
+          break;
+        }
       }
     }
   }
 
-  // ── Fallback: an actor profile link's image alt ("View X's profile") ──────
-  // Prefer the link that is NOT the logged-in user (skip the composer/nav avatar).
-  const links = [...postEl.querySelectorAll('a[href*="/in/"]')];
+  // ── Author profile path: take it from the ACTOR link, not a reactor. The
+  //    actor link is the first /in/ or /company/ link whose accessible name
+  //    matches the author name we found (guards against grabbing a reactor). ──
+  const links = [...postEl.querySelectorAll('a[href*="/in/"], a[href*="/company/"]')];
   for (const link of links) {
-    const alt = link.querySelector('img[alt]')?.getAttribute('alt');
-    const fromAlt = extractNameFromPhotoAlt(alt);
-    if (!name && fromAlt && fromAlt.length <= 60 && fromAlt.toLowerCase() !== 'me') {
-      name = fromAlt;
-    }
-    if (!profilePath) {
+    const alt = link.querySelector('img[alt]')?.getAttribute('alt') || '';
+    const linkName = extractNameFromPhotoAlt(alt) || link.textContent?.trim();
+    // Match this link to the resolved author name when possible.
+    const matchesAuthor = name && linkName &&
+      linkName.toLowerCase().includes(name.toLowerCase().split(' ')[0]);
+    if (matchesAuthor || (!name && !profilePath)) {
       try { profilePath = new URL(link.href).pathname.replace(/\/$/, ''); } catch { /* ignore */ }
+      if (!name && extractNameFromPhotoAlt(alt)) name = extractNameFromPhotoAlt(alt);
+      if (profilePath && matchesAuthor) break;
     }
-    if (name && profilePath) break;
   }
 
   // ── Headline (best-effort): actor sub-description line ─────────────────────
