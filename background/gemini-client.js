@@ -45,17 +45,14 @@ export class GeminiClient {
       temperature,
       topP: 0.9,
       maxOutputTokens: 8192,
-      stopSequences: [],
+      // NOTE: no empty stopSequences — some API versions reject [] with a 400.
     };
 
-    // Flash models are "thinking" models — hidden reasoning tokens count
-    // against maxOutputTokens. thinkingBudget:0 disables thinking so the whole
-    // budget goes to the actual (short) reply. Only apply to FLASH tiers, which
-    // allow disabling; Pro models may reject it (handled by the retry below).
-    const isFlash = /flash/i.test(this.model) && !/pro/i.test(this.model);
-    if (isFlash) {
-      generationConfig.thinkingConfig = { thinkingBudget: 0 };
-    }
+    // Flash models support a thinking budget. Newer 3.x flash models REJECT
+    // thinkingBudget:0 (a 400), so we omit thinkingConfig by default and only
+    // add it as a recovery step is unnecessary — keeping the request minimal is
+    // the most compatible. (If you want to force-disable thinking on a model
+    // that supports it, that's the retry path below, not the default.)
 
     const body = {
       contents,
@@ -93,16 +90,20 @@ export class GeminiClient {
       }
     }
 
-    // If the model rejects thinkingConfig (some tiers do), retry once without it
-    // rather than failing the whole request.
-    if (res.status === 400 && body.generationConfig.thinkingConfig) {
+    // A 400 "invalid argument" usually means one optional field in the request
+    // is rejected by this particular model (e.g. thinkingConfig, topP, or an
+    // unsupported generationConfig key). Retry ONCE with a stripped-down,
+    // maximally-compatible body: just contents + a bare temperature. If that
+    // succeeds, the offending field was optional; if it still 400s, surface it.
+    if (res.status === 400) {
       const errText = await res.clone().text().catch(() => '');
-      if (/thinking/i.test(errText)) {
-        logger.warn('GeminiClient: model rejected thinkingConfig, retrying without it');
-        const retry = { ...body, generationConfig: { ...body.generationConfig } };
-        delete retry.generationConfig.thinkingConfig;
-        res = await doFetch(retry);
-      }
+      logger.warn('GeminiClient: 400 — retrying with a minimal request. Detail:', errText.slice(0, 200));
+      const minimal = {
+        contents: body.contents,
+        generationConfig: { temperature, maxOutputTokens: 2048 },
+      };
+      if (systemInstruction) minimal.systemInstruction = { parts: [{ text: systemInstruction }] };
+      res = await doFetch(minimal);
     }
 
     if (!res.ok) {
@@ -114,6 +115,9 @@ export class GeminiClient {
       }
       if (res.status === 503 || res.status === 429) {
         throw new Error(`Gemini is busy right now (${res.status}) — tried a few times. Wait a moment and click again, or switch to a local Ollama model in Settings.`);
+      }
+      if (res.status === 400) {
+        throw new Error(`Gemini rejected the request (400): ${msg}. Try a different Gemini model in Settings, or switch to Ollama.`);
       }
       throw new Error(`Gemini API error ${res.status}: ${msg}`);
     }
