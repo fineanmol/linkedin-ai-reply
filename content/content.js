@@ -13,7 +13,7 @@ import { extractComments, extractPostContent } from './comment-extractor.js';
 import { extractFeedPosts } from './post-extractor.js';
 import { extractTopContentPosts, isTopContentPage } from './topcontent-extractor.js';
 import { extractConnections, isConnectionsPage } from './connections-extractor.js';
-import { extractProfile, isProfilePage } from './profile-extractor.js';
+import { extractProfile, extractProfilePosts, isProfilePage } from './profile-extractor.js';
 import { mountQueuePanel } from './queue-panel.js';
 import { injectReplyButton, closeAllPanels } from './ui-injector.js';
 import { findAncestorPost } from '../utils/dom-helpers.js';
@@ -265,6 +265,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse(isProfilePage() ? extractProfile(document) : null);
     } catch (e) {
       sendResponse(null);
+    }
+    return true;
+  }
+
+  // Background navigated the tab to /recent-activity/all/ — scrape their posts.
+  if (message.type === MSG.SCRAPE_POSTS) {
+    try {
+      sendResponse({ posts: extractProfilePosts(document) });
+    } catch (e) {
+      sendResponse({ posts: [] });
     }
     return true;
   }

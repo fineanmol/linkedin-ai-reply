@@ -24,6 +24,27 @@ import logger from '../utils/logger.js';
 // Lets CANCEL_REPLY abort a generation that's still running.
 const inFlightControllers = new Map();
 
+/**
+ * Poll a tab with a scrape message until its content script responds with data
+ * that passes `isGood`, or we give up. Handles the SPA render delay.
+ */
+function scrapeTabWhenReady(tabId, msgType, isGood, { tries = 8, delay = 1200, initial = 2500 } = {}) {
+  return new Promise((resolve) => {
+    let n = 0;
+    const attempt = () => {
+      n++;
+      chrome.tabs.sendMessage(tabId, { type: msgType })
+        .then(res => {
+          if (isGood(res)) resolve(res);
+          else if (n < tries) setTimeout(attempt, delay);
+          else resolve(res || null);
+        })
+        .catch(() => { if (n < tries) setTimeout(attempt, delay); else resolve(null); });
+    };
+    setTimeout(attempt, initial);
+  });
+}
+
 // ─── Message Router ────────────────────────────────────────────────────────
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -345,42 +366,42 @@ async function handleMessage(message, sender) {
     }
 
     // Deep draft: open the connection's profile in a background tab, scrape
-    // their About + recent posts, draft from that, then close the tab.
+    // About + headline, then navigate the SAME tab to their dedicated
+    // /recent-activity/all/ page for reliable recent posts, draft, close.
     // Per-click only (never batched) to stay out of automation-detection turf.
     case MSG.DEEP_DRAFT_WELCOME: {
       const { profilePath, name, headline } = payload || {};
       let tabId = null;
       try {
-        const url = `https://www.linkedin.com${profilePath}/`;
-        const tab = await chrome.tabs.create({ url, active: false });
+        const clean = String(profilePath || '').replace(/\/$/, '');
+        const tab = await chrome.tabs.create({ url: `https://www.linkedin.com${clean}/`, active: false });
         tabId = tab.id;
-        // Wait for the profile to finish loading, then ask it to scrape.
-        const profile = await new Promise((resolve) => {
-          let tries = 0;
-          const attempt = () => {
-            tries++;
-            chrome.tabs.sendMessage(tabId, { type: MSG.SCRAPE_PROFILE })
-              .then(res => {
-                if (res && (res.about || res.recentPosts?.length || res.name)) resolve(res);
-                else if (tries < 8) setTimeout(attempt, 1200);
-                else resolve(null);
-              })
-              .catch(() => { if (tries < 8) setTimeout(attempt, 1200); else resolve(null); });
-          };
-          setTimeout(attempt, 2500); // give the SPA time to render
-        });
+
+        // 1) Scrape the main profile (name, headline, About).
+        const profile = await scrapeTabWhenReady(tabId, MSG.SCRAPE_PROFILE,
+          r => r && (r.about || r.name)) || {};
+
+        // 2) Navigate the SAME tab to the dedicated posts page and scrape posts.
+        //    Purpose-built page → far more reliable than the profile's preview.
+        let recentPosts = profile.recentPosts || [];
+        try {
+          await chrome.tabs.update(tabId, { url: `https://www.linkedin.com${clean}/recent-activity/all/` });
+          const postsRes = await scrapeTabWhenReady(tabId, MSG.SCRAPE_POSTS,
+            r => Array.isArray(r?.posts) && r.posts.length > 0);
+          if (postsRes?.posts?.length) recentPosts = postsRes.posts;
+        } catch { /* keep whatever posts the profile page gave us */ }
 
         const [{ styleContext }, identity] = await Promise.all([getProfileWithContext(), getMyIdentity()]);
         const messages = buildWelcomeMessages({
           userName: identity.name || 'the user',
           styleContext,
-          name: profile?.name || name,
-          headline: profile?.headline || headline,
-          about: profile?.about || '',
-          recentPosts: profile?.recentPosts || [],
+          name: profile.name || name,
+          headline: profile.headline || headline,
+          about: profile.about || '',
+          recentPosts,
         });
         const { text } = await llmRouter.chat(messages);
-        return { message: humanizeReply(text), deep: !!(profile?.about || profile?.recentPosts?.length) };
+        return { message: humanizeReply(text), deep: !!(profile.about || recentPosts.length) };
       } catch (e) {
         return { error: e.message };
       } finally {

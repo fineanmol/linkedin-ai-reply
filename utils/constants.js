@@ -256,6 +256,7 @@ export const MSG = {
   DRAFT_WELCOME:     'DRAFT_WELCOME',      // payload: { name, headline } → { message }
   DEEP_DRAFT_WELCOME:'DEEP_DRAFT_WELCOME', // payload: { profilePath, name, headline } → { message } (opens profile, scrapes, drafts)
   SCRAPE_PROFILE:    'SCRAPE_PROFILE',     // bg→content(profile tab): → { name, headline, about, recentPosts }
+  SCRAPE_POSTS:      'SCRAPE_POSTS',       // bg→content(recent-activity tab): → { posts:[...] }
   ADD_CONNECTIONS:   'ADD_CONNECTIONS',    // payload: { connections:[...] } → { added }
   GET_CONNECTIONS:   'GET_CONNECTIONS',    // → { connections }
   UPDATE_CONNECTION: 'UPDATE_CONNECTION',  // payload: { id, patch } → { success }
