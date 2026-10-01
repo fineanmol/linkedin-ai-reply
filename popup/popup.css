@@ -188,6 +188,7 @@ body {
   font-weight: 600;
 }
 
+.setup-hint[hidden] { display: none; }
 /* Setup Hint */
 .setup-hint {
   display: flex;

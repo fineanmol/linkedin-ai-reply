@@ -2,7 +2,7 @@
  * options.js — Options page controller
  */
 
-import { MSG, OLLAMA_MODELS, STORAGE_KEYS } from '../utils/constants.js';
+import { MSG, OLLAMA_MODELS, STORAGE_KEYS, DEFAULT_SETTINGS, CLAUDE_MODELS } from '../utils/constants.js';
 
 // ─── Utilities ─────────────────────────────────────────────────────────────
 
@@ -27,6 +27,21 @@ function formatDate(ts) {
   return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
+/**
+ * Local-calendar YYYY-MM-DD for a Date. NOT toISOString() — that converts to
+ * UTC first, so local midnight in e.g. Europe/Berlin lands on the PREVIOUS day.
+ */
+function localDateStr(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Clamp a numeric setting into [min, max], falling back to `def` if not a number. */
+function clampNum(v, min, max, def) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return def;
+  return Math.min(max, Math.max(min, n));
+}
+
 // ─── Tab Navigation ────────────────────────────────────────────────────────
 
 function initTabs() {
@@ -46,6 +61,7 @@ function initTabs() {
       if (tab === 'style') loadStyleProfile();
       if (tab === 'queue') loadQueue();
       if (tab === 'comments') loadCommentsLog();
+      if (tab === 'calendar') renderCalendarGrid();
     });
   });
 }
@@ -62,7 +78,7 @@ async function loadCommentsLog() {
 
   const listEl = document.getElementById('comments-list');
   if (!log.length) {
-    listEl.innerHTML = '<div class="empty-state">No comments logged yet. Post from the on-page queue and tap “I posted this”.</div>';
+    listEl.innerHTML = '<div class="empty-state">No comments logged yet. After posting a queued comment on LinkedIn, click “Mark posted” here or “I posted this” in the on-page panel.</div>';
   } else {
     listEl.innerHTML = log.map(l => `
       <div class="history-item">
@@ -92,37 +108,22 @@ async function loadCommentsLog() {
 // ─── Sidebar Status ────────────────────────────────────────────────────────
 
 async function checkSidebarStatus() {
-  const settings = await sendMsg(MSG.GET_SETTINGS);
-  const backend = settings?.llmBackend || 'ollama';
   const dot = document.getElementById('sidebar-dot');
   const label = document.getElementById('sidebar-label');
-
-  if (backend === 'gemini') {
-    const hasKey = !!settings?.geminiApiKey;
-    dot.className = `dot ${hasKey ? 'online' : 'offline'}`;
-    label.textContent = hasKey ? 'Gemini API ready' : 'Gemini key missing';
+  // The background resolves the selected backend (incl. 'auto') and reports
+  // the truthful label — never infer "local" here.
+  const r = await sendMsg(MSG.CHECK_BACKEND);
+  if (!r || typeof r.alive !== 'boolean') {
+    dot.className = 'dot offline';
+    label.textContent = 'Status unavailable';
     return;
   }
-
-  if (backend === 'auto') {
-    const r = await sendMsg(MSG.CHECK_OLLAMA);
-    if (r?.alive) {
-      dot.className = 'dot online';
-      label.textContent = 'Ollama active';
-    } else if (settings?.geminiApiKey) {
-      dot.className = 'dot online';
-      label.textContent = 'Gemini fallback';
-    } else {
-      dot.className = 'dot offline';
-      label.textContent = 'No backend';
-    }
-    return;
-  }
-
-  // Ollama
-  const result = await sendMsg(MSG.CHECK_OLLAMA);
-  dot.className = `dot ${result?.alive ? 'online' : 'offline'}`;
-  label.textContent = result?.alive ? 'Ollama connected' : 'Ollama offline';
+  const where = r.isLocal ? 'Local' : 'Cloud';
+  dot.className = `dot ${r.alive ? 'online' : 'offline'}`;
+  label.textContent = r.alive
+    ? `${r.label || r.backend} · ${where}`
+    : `${r.label || r.backend} offline`;
+  label.title = r.error || (r.model ? `${r.label || r.backend} — ${r.model}` : '');
 }
 
 // ─── LLM Tab ───────────────────────────────────────────────────────────────
@@ -130,15 +131,16 @@ async function checkSidebarStatus() {
 async function initLLMTab(settings) {
   // Backend radio
   const radios = document.querySelectorAll('input[name="llmBackend"]');
+  const initialBackend = settings.llmBackend || DEFAULT_SETTINGS.llmBackend;
   radios.forEach(r => {
-    if (r.value === settings.llmBackend) r.checked = true;
+    if (r.value === initialBackend) r.checked = true;
     r.addEventListener('change', () => updateBackendVisibility(r.value));
   });
-  updateBackendVisibility(settings.llmBackend);
+  updateBackendVisibility(initialBackend);
 
   // Ollama URL
   const urlInput = document.getElementById('ollama-url');
-  urlInput.value = settings.ollamaUrl || 'http://localhost:11434';
+  urlInput.value = settings.ollamaUrl || DEFAULT_SETTINGS.ollamaUrl;
 
   // Load Ollama models
   await loadOllamaModels(settings.ollamaModel);
@@ -150,40 +152,105 @@ async function initLLMTab(settings) {
   // Gemini
   document.getElementById('gemini-key').value = settings.geminiApiKey || '';
   const geminiModelSel = document.getElementById('gemini-model');
-  geminiModelSel.value = settings.geminiModel || 'gemini-flash-latest';
+  geminiModelSel.value = settings.geminiModel || DEFAULT_SETTINGS.geminiModel;
 
-  // Sliders
+  // Claude — bridge (Claude Code login) or Anthropic API key; both are cloud.
+  const claudeModelSel = document.getElementById('claude-model');
+  claudeModelSel.innerHTML = '';
+  CLAUDE_MODELS.forEach(m => {
+    const opt = document.createElement('option');
+    opt.value = m.id; opt.textContent = m.label;
+    claudeModelSel.appendChild(opt);
+  });
+  claudeModelSel.value = settings.claudeModel || DEFAULT_SETTINGS.claudeModel;
+  if (!claudeModelSel.value) claudeModelSel.value = DEFAULT_SETTINGS.claudeModel;
+
+  const claudeMode = settings.claudeMode === 'api' ? 'api' : 'bridge';
+  document.querySelectorAll('input[name="claudeMode"]').forEach(r => {
+    r.checked = r.value === claudeMode;
+    r.addEventListener('change', () => updateClaudeModeVisibility(r.value));
+  });
+  updateClaudeModeVisibility(claudeMode);
+  document.getElementById('claude-bridge-url').value = settings.claudeBridgeUrl || DEFAULT_SETTINGS.claudeBridgeUrl;
+  document.getElementById('claude-bridge-token').value = settings.claudeBridgeToken || '';
+  document.getElementById('claude-api-key').value = settings.claudeApiKey || '';
+
+  // Sliders. Defaults come from DEFAULT_SETTINGS so the UI never disagrees
+  // with what the background actually uses. Old installs may have stored a
+  // 150-word max — clamp into the 15–45 range the prompt hard-caps at.
   const maxSlider = document.getElementById('max-length');
   const maxVal = document.getElementById('max-length-val');
-  maxSlider.value = settings.maxReplyLength || 150;
+  maxSlider.value = clampNum(settings.maxReplyLength ?? DEFAULT_SETTINGS.maxReplyLength, 15, 45, DEFAULT_SETTINGS.maxReplyLength);
   maxVal.textContent = maxSlider.value;
   maxSlider.addEventListener('input', () => maxVal.textContent = maxSlider.value);
 
   const tempSlider = document.getElementById('temperature');
   const tempVal = document.getElementById('temp-val');
-  tempSlider.value = settings.temperature || 0.7;
-  tempVal.textContent = parseFloat(tempSlider.value).toFixed(1);
-  tempSlider.addEventListener('input', () => tempVal.textContent = parseFloat(tempSlider.value).toFixed(1));
+  tempSlider.value = clampNum(settings.temperature ?? DEFAULT_SETTINGS.temperature, 0.1, 1.0, DEFAULT_SETTINGS.temperature);
+  tempVal.textContent = parseFloat(tempSlider.value).toFixed(2);
+  tempSlider.addEventListener('input', () => tempVal.textContent = parseFloat(tempSlider.value).toFixed(2));
 
-  // Save
+  // Save — every field this tab owns (SAVE_SETTINGS merges into stored settings).
   document.getElementById('save-llm').addEventListener('click', async () => {
-    const backend = document.querySelector('input[name="llmBackend"]:checked')?.value || 'ollama';
-    await sendMsg(MSG.SAVE_SETTINGS, {
+    const backend = document.querySelector('input[name="llmBackend"]:checked')?.value || DEFAULT_SETTINGS.llmBackend;
+    const patch = {
       llmBackend: backend,
-      ollamaUrl: urlInput.value.trim(),
-      ollamaModel: document.getElementById('ollama-model').value,
+      ollamaUrl: urlInput.value.trim() || DEFAULT_SETTINGS.ollamaUrl,
       geminiApiKey: document.getElementById('gemini-key').value.trim(),
-      geminiModel: document.getElementById('gemini-model').value,
-      maxReplyLength: parseInt(maxSlider.value),
+      geminiModel: geminiModelSel.value,
+      claudeMode: document.querySelector('input[name="claudeMode"]:checked')?.value || 'bridge',
+      claudeBridgeUrl: document.getElementById('claude-bridge-url').value.trim() || DEFAULT_SETTINGS.claudeBridgeUrl,
+      claudeBridgeToken: document.getElementById('claude-bridge-token').value.trim(),
+      claudeApiKey: document.getElementById('claude-api-key').value.trim(),
+      claudeModel: claudeModelSel.value || DEFAULT_SETTINGS.claudeModel,
+      maxReplyLength: parseInt(maxSlider.value, 10),
       temperature: parseFloat(tempSlider.value),
-    });
+    };
+    // Don't overwrite the stored Ollama model with the "Loading…" placeholder.
+    const ollamaModel = document.getElementById('ollama-model').value;
+    if (ollamaModel) patch.ollamaModel = ollamaModel;
+    const resp = await sendMsg(MSG.SAVE_SETTINGS, patch);
+    if (resp?.error) { showToast(`Couldn't save: ${resp.error}`, 'error'); return; }
     showToast('✓ LLM settings saved!');
+    checkSidebarStatus();
+  });
+
+  // Test connection — asks the background about the SAVED selected backend.
+  const testBtn = document.getElementById('test-backend');
+  const testOut = document.getElementById('test-backend-result');
+  testBtn.addEventListener('click', async () => {
+    testBtn.disabled = true;
+    testOut.className = 'form-hint';
+    testOut.textContent = 'Testing…';
+    try {
+      const r = await sendMsg(MSG.CHECK_BACKEND);
+      if (!r || typeof r.alive !== 'boolean') {
+        testOut.className = 'form-hint test-fail';
+        testOut.textContent = `✗ ${r?.error || 'No response from the background service worker.'}`;
+        return;
+      }
+      const where = r.isLocal ? 'Local' : 'Cloud';
+      const name = `${r.label || r.backend}${r.model ? ` · ${r.model}` : ''} (${where})`;
+      testOut.className = `form-hint ${r.alive ? 'test-ok' : 'test-fail'}`;
+      testOut.textContent = r.alive
+        ? `✓ Connected — ${name}`
+        : `✗ Not reachable — ${name}${r.error ? `: ${r.error}` : ''}`;
+    } finally {
+      testBtn.disabled = false;
+    }
   });
 }
 
 function updateBackendVisibility(backend) {
-  document.getElementById('ollama-config').hidden = backend === 'gemini';
-  document.getElementById('gemini-config').hidden = backend === 'ollama';
+  // 'auto' uses Ollama first, then Gemini — show both configs for it.
+  document.getElementById('ollama-config').hidden = !(backend === 'ollama' || backend === 'auto');
+  document.getElementById('gemini-config').hidden = !(backend === 'gemini' || backend === 'auto');
+  document.getElementById('claude-config').hidden = backend !== 'claude';
+}
+
+function updateClaudeModeVisibility(mode) {
+  document.getElementById('claude-bridge-fields').hidden = mode === 'api';
+  document.getElementById('claude-api-fields').hidden = mode !== 'api';
 }
 
 async function loadOllamaModels(currentModel) {
@@ -241,7 +308,7 @@ async function loadOllamaModels(currentModel) {
 
 async function loadStyleProfile() {
   const profile = await sendMsg(MSG.GET_STYLE_PROFILE);
-  const identity = await sendMsg('GET_IDENTITY');
+  const identity = await sendMsg(MSG.GET_IDENTITY);
 
   document.getElementById('user-name').value = identity?.name || '';
   document.getElementById('manual-examples').value = profile?.manualExamples || '';
@@ -260,7 +327,7 @@ async function loadStyleProfile() {
         <div class="sample-meta">
           <span>${s.source === 'manual' ? '✍️ Manual' : '✓ Approved'}</span>
           <span>·</span>
-          <span>${s.intent || 'general'}</span>
+          <span>${escapeHTML(s.intent || 'general')}</span>
           <span>·</span>
           <span>${formatDate(s.timestamp)}</span>
         </div>
@@ -276,7 +343,7 @@ async function initStyleTab() {
     const examples = document.getElementById('manual-examples').value;
 
     if (name) {
-      await sendMsg('SAVE_IDENTITY', { name, profileUrl: null });
+      await sendMsg(MSG.SAVE_IDENTITY, { name, profileUrl: null });
     }
     await sendMsg(MSG.SAVE_STYLE_PROFILE, { manualExamples: examples });
     showToast('✓ Style profile saved!');
@@ -296,8 +363,8 @@ async function initStyleTab() {
 // ─── History Tab ───────────────────────────────────────────────────────────
 
 async function loadHistory() {
-  const data = await chrome.storage.local.get('liar_reply_history');
-  const history = data.liar_reply_history || [];
+  const data = await chrome.storage.local.get(STORAGE_KEYS.REPLY_HISTORY);
+  const history = data[STORAGE_KEYS.REPLY_HISTORY] || [];
   const countEl = document.getElementById('history-count');
   const listEl = document.getElementById('history-list');
 
@@ -311,10 +378,10 @@ async function loadHistory() {
   listEl.innerHTML = history.slice(0, 50).map(h => `
     <div class="history-item">
       <div class="history-item-meta">
-        <span class="history-status ${h.status || 'generated'}">${h.status === 'approved' ? '✓ Approved' : 'Generated'}</span>
-        <span>${h.intent || 'general'}</span>
+        <span class="history-status ${h.status === 'approved' ? 'approved' : 'generated'}">${h.status === 'approved' ? '✓ Approved' : 'Generated'}</span>
+        <span>${escapeHTML(h.intent || 'general')}</span>
         <span>·</span>
-        <span>${h.backend || 'local'} — ${h.model || ''}</span>
+        <span>${escapeHTML(h.label || h.backend || 'unknown backend')} — ${escapeHTML(h.model || '')}</span>
         <span>·</span>
         <span>${formatDate(h.timestamp)}</span>
       </div>
@@ -322,13 +389,16 @@ async function loadHistory() {
       <div class="history-reply">${escapeHTML(h.reply || '')}</div>
     </div>
   `).join('');
+}
 
+/** Wired ONCE at boot — loadHistory() runs on every tab open. */
+function initHistoryTab() {
   document.getElementById('clear-history').addEventListener('click', async () => {
     if (!confirm('Clear all reply history?')) return;
-    await chrome.storage.local.remove('liar_reply_history');
+    await chrome.storage.local.remove(STORAGE_KEYS.REPLY_HISTORY);
     showToast('History cleared.');
     loadHistory();
-  }, { once: true });
+  });
 }
 
 // ─── Advanced Tab ──────────────────────────────────────────────────────────
@@ -336,12 +406,22 @@ async function loadHistory() {
 async function initAdvancedTab(settings) {
   document.getElementById('auto-learn').checked = settings.autoLearnFromApproved !== false;
   document.getElementById('debug-mode').checked = settings.debugMode === true;
+  const bgScrape = document.getElementById('allow-bg-scraping');
+  bgScrape.checked = settings.allowBackgroundScraping === true;
 
   document.getElementById('save-advanced').addEventListener('click', async () => {
-    await sendMsg(MSG.SAVE_SETTINGS, {
+    // Turning background reading ON is a deliberate, informed choice.
+    if (bgScrape.checked && settings.allowBackgroundScraping !== true &&
+        !confirm('Allow background profile reading?\n\nThis opens hidden LinkedIn tabs to read other people\'s profiles and recent activity. LinkedIn\'s User Agreement prohibits automated scraping, and each visit shows up as a profile view.')) {
+      bgScrape.checked = false;
+    }
+    const resp = await sendMsg(MSG.SAVE_SETTINGS, {
       autoLearnFromApproved: document.getElementById('auto-learn').checked,
       debugMode: document.getElementById('debug-mode').checked,
+      allowBackgroundScraping: bgScrape.checked,
     });
+    if (resp?.error) { showToast(`Couldn't save: ${resp.error}`, 'error'); return; }
+    settings.allowBackgroundScraping = bgScrape.checked;
     showToast('✓ Advanced settings saved!');
   });
 
@@ -422,21 +502,24 @@ async function loadQueue() {
   listEl.innerHTML = queue.map(q => {
     const rel = q.relevance != null ? `${Math.round(q.relevance * 100)}% match` : '';
     const done = q.status === 'done';
+    const copied = q.status === 'copied';
+    const id = escapeHTML(q.id);
     return `
-    <div class="history-item" data-id="${q.id}" style="${done ? 'opacity:.55;' : ''}">
+    <div class="history-item" data-id="${id}" style="${done ? 'opacity:.55;' : ''}">
       <div class="history-item-meta">
-        <span class="history-status ${done ? 'approved' : 'generated'}">${done ? '✓ Done' : 'Queued'}</span>
+        <span class="history-status ${done ? 'approved' : copied ? 'copied' : 'generated'}">${done ? '✓ Posted' : copied ? 'Copied' : 'Queued'}</span>
         <span>${escapeHTML(q.authorName || 'Someone')}</span>
         ${q.authorHeadline ? `<span>·</span><span>${escapeHTML(q.authorHeadline.slice(0, 50))}</span>` : ''}
-        ${rel ? `<span>·</span><span>${rel}</span>` : ''}
+        ${rel ? `<span>·</span><span>${escapeHTML(rel)}</span>` : ''}
       </div>
       <div class="history-comment">💬 "${escapeHTML((q.postText || '').slice(0, 160))}${(q.postText || '').length > 160 ? '…' : ''}"</div>
       ${q.whyEngage ? `<div class="form-hint" style="margin:4px 0;">Why: ${escapeHTML(q.whyEngage)}</div>` : ''}
-      <textarea class="form-input form-textarea q-draft" rows="3" data-id="${q.id}" placeholder="Click “Draft reply” to generate…">${escapeHTML(q.draftReply || '')}</textarea>
+      <textarea class="form-input form-textarea q-draft" rows="3" data-id="${id}" placeholder="Click “Draft reply” to generate…">${escapeHTML(q.draftReply || '')}</textarea>
       <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
-        <button class="btn-save q-draft-btn" data-id="${q.id}" style="padding:6px 12px;">${q.draftReply ? '↻ Regenerate' : '✨ Draft reply'}</button>
-        <button class="btn-save q-open-btn" data-id="${q.id}" data-url="${q.permalink || ''}" style="padding:6px 12px;">📋 Copy & open post</button>
-        <button class="btn-danger-sm q-skip-btn" data-id="${q.id}">Skip</button>
+        <button class="btn-save q-draft-btn" data-id="${id}" style="padding:6px 12px;">${q.draftReply ? '↻ Regenerate' : '✨ Draft reply'}</button>
+        <button class="btn-save q-open-btn" data-id="${id}" data-url="${escapeHTML(safeLinkedInUrl(q.permalink))}" style="padding:6px 12px;">📋 Copy & open post</button>
+        <button class="btn-save q-posted-btn" data-id="${id}" style="padding:6px 12px;" ${done ? 'disabled' : ''}>✓ Mark posted</button>
+        <button class="btn-danger-sm q-skip-btn" data-id="${id}">Skip</button>
       </div>
     </div>`;
   }).join('');
@@ -446,6 +529,8 @@ async function loadQueue() {
     b.addEventListener('click', () => draftForItem(b.dataset.id)));
   listEl.querySelectorAll('.q-open-btn').forEach(b =>
     b.addEventListener('click', () => copyAndOpen(b.dataset.id, b.dataset.url)));
+  listEl.querySelectorAll('.q-posted-btn').forEach(b =>
+    b.addEventListener('click', () => markPosted(b.dataset.id)));
   listEl.querySelectorAll('.q-skip-btn').forEach(b =>
     b.addEventListener('click', () => skipItem(b.dataset.id)));
   // Persist manual edits to drafts
@@ -457,8 +542,8 @@ async function draftForItem(id) {
   const resp = await sendMsg(MSG.GET_QUEUE);
   const item = (resp?.queue || []).find(q => q.id === id);
   if (!item) return;
-  const ta = document.querySelector(`.q-draft[data-id="${id}"]`);
-  const btn = document.querySelector(`.q-draft-btn[data-id="${id}"]`);
+  const ta = document.querySelector(`.q-draft[data-id="${CSS.escape(id)}"]`);
+  const btn = document.querySelector(`.q-draft-btn[data-id="${CSS.escape(id)}"]`);
   if (ta) ta.value = 'Generating…';
   if (btn) btn.disabled = true;
   // Reuse the existing GENERATE_REPLY pipeline: treat the POST as the thing
@@ -471,26 +556,509 @@ async function draftForItem(id) {
     intent: 'post_comment',
     forceRegenerate: !!item.draftReply,
   });
-  const text = gen?.reply || `(couldn't generate: ${gen?.error || 'unknown'})`;
-  if (ta) ta.value = text;
+  if (!gen?.reply) {
+    // Show the error, but never save error text as the draft.
+    if (ta) ta.value = item.draftReply || '';
+    if (btn) { btn.disabled = false; btn.textContent = item.draftReply ? '↻ Regenerate' : '✨ Draft reply'; }
+    showToast(`Couldn't generate: ${gen?.error || 'unknown error'}`, 'error');
+    return;
+  }
+  if (ta) ta.value = gen.reply;
   if (btn) { btn.disabled = false; btn.textContent = '↻ Regenerate'; }
-  await sendMsg(MSG.UPDATE_QUEUE_ITEM, { id, patch: { draftReply: text } });
+  await sendMsg(MSG.UPDATE_QUEUE_ITEM, { id, patch: { draftReply: gen.reply } });
 }
 
+/**
+ * Copy the draft and open the post. Marks the item 'copied' (in progress) —
+ * NOT done: it only becomes done (and logged) when the user explicitly
+ * clicks "Mark posted". Mirrors the on-page panel (content/queue-panel.js).
+ */
 async function copyAndOpen(id, url) {
-  const ta = document.querySelector(`.q-draft[data-id="${id}"]`);
+  const ta = document.querySelector(`.q-draft[data-id="${CSS.escape(id)}"]`);
   const text = ta?.value?.trim();
   if (text) {
-    try { await navigator.clipboard.writeText(text); showToast('Draft copied — paste it on LinkedIn.'); } catch { /* ignore */ }
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast('Draft copied — paste it on LinkedIn, post it, then click “Mark posted”.');
+    } catch {
+      showToast('Copy failed — select the draft and copy it manually.', 'error');
+    }
   }
-  await sendMsg(MSG.UPDATE_QUEUE_ITEM, { id, patch: { status: 'done' } });
-  if (url) window.open(url, '_blank', 'noopener');
+  await sendMsg(MSG.UPDATE_QUEUE_ITEM, { id, patch: { status: 'copied' } });
+  const safeUrl = safeLinkedInUrl(url);
+  if (safeUrl) window.open(safeUrl, '_blank', 'noopener');
   loadQueue();
+}
+
+/** Explicit confirmation that the user posted it: log it, then mark done. */
+async function markPosted(id) {
+  const resp = await sendMsg(MSG.GET_QUEUE);
+  const item = (resp?.queue || []).find(q => q.id === id);
+  if (!item) return;
+  const ta = document.querySelector(`.q-draft[data-id="${CSS.escape(id)}"]`);
+  const comment = (ta?.value || item.draftReply || '').trim();
+  const logged = await sendMsg(MSG.LOG_COMMENT, {
+    urn: item.urn, authorName: item.authorName, postText: item.postText, comment,
+  });
+  if (logged?.error) { showToast(`Couldn't log it: ${logged.error}`, 'error'); return; }
+  await sendMsg(MSG.UPDATE_QUEUE_ITEM, { id, patch: { status: 'done' } });
+  const c = logged?.counts;
+  showToast(c ? `Logged ✓ — ${c.today} today, ${c.week} this week.` : 'Logged ✓');
+  loadQueue();
+}
+
+/** Only ever open https LinkedIn URLs from stored queue data. */
+function safeLinkedInUrl(url) {
+  try {
+    const u = new URL(url);
+    return u.protocol === 'https:' && /(^|\.)linkedin\.com$/i.test(u.hostname) ? u.href : '';
+  } catch {
+    return '';
+  }
 }
 
 async function skipItem(id) {
   await sendMsg(MSG.UPDATE_QUEUE_ITEM, { id, patch: { status: 'skipped' } });
   loadQueue();
+}
+
+// ─── Content Calendar Tab ────────────────────────────────────────────────────
+// Draft-only: nothing generated here is ever posted to LinkedIn automatically.
+// The user reviews, edits, and manually posts, then clicks "Mark as Posted".
+
+let _calCancelled = false;
+let _calMonthCursor = new Date();
+let _calModalPost = null;
+// Transient, in-memory only: scraped-but-not-yet-finalized posts under review
+// in the checklist. Discarded on a fresh scrape or once the batch is built —
+// no need to survive an options-page reload (re-scraping is cheap).
+let _calScrapedPosts = []; // [{text, rawTimestamp, selected}]
+
+function initCalendarTab() {
+  _calMonthCursor = new Date(_calMonthCursor.getFullYear(), _calMonthCursor.getMonth(), 1);
+
+  const startDateInput = document.getElementById('cal-start-date');
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  startDateInput.value = localDateStr(tomorrow);
+
+  const ratioSlider = document.getElementById('cal-ratio-friend');
+  const ratioLabel = document.getElementById('cal-ratio-label');
+  ratioSlider.addEventListener('input', () => {
+    const f = ratioSlider.value;
+    ratioLabel.textContent = `${f}% friend / ${100 - f}% trending`;
+  });
+
+  const timeSlotSel = document.getElementById('cal-timeslot');
+  const customTime = document.getElementById('cal-timeslot-custom');
+  timeSlotSel.addEventListener('change', () => {
+    customTime.hidden = timeSlotSel.value !== 'custom';
+  });
+
+  document.getElementById('cal-scrape').addEventListener('click', scrapeFriendProfile);
+  document.getElementById('cal-generate-step2').addEventListener('click', generateCalendarBatch);
+  document.getElementById('cal-cancel').addEventListener('click', () => { _calCancelled = true; });
+
+  document.getElementById('cal-clear').addEventListener('click', async () => {
+    if (!confirm('Clear the entire content calendar? This cannot be undone.')) return;
+    await sendMsg(MSG.CLEAR_CALENDAR);
+    showToast('Calendar cleared.');
+    renderCalendarGrid();
+  });
+
+  document.getElementById('cal-prev-month').addEventListener('click', () => {
+    _calMonthCursor.setMonth(_calMonthCursor.getMonth() - 1);
+    renderCalendarGrid();
+  });
+  document.getElementById('cal-next-month').addEventListener('click', () => {
+    _calMonthCursor.setMonth(_calMonthCursor.getMonth() + 1);
+    renderCalendarGrid();
+  });
+
+  initCalendarModal();
+}
+
+function selectedTimeSlot() {
+  const sel = document.getElementById('cal-timeslot').value;
+  if (sel === 'custom') {
+    const t = document.getElementById('cal-timeslot-custom').value || '08:00';
+    return { custom: t };
+  }
+  return sel;
+}
+
+/**
+ * Step 1: scrape the friend's profile only. Shows every post found in a
+ * checklist so the user can pick which ones are worth adapting — many
+ * image/GIF posts have thin captions that won't adapt into anything useful,
+ * so review beats silently consuming everything scraped.
+ */
+async function scrapeFriendProfile() {
+  const friendProfileUrl = document.getElementById('cal-friend-url').value.trim();
+  if (!friendProfileUrl) { showToast('Paste your friend\'s profile URL to draw from.', 'error'); return; }
+
+  const scrapeBtn = document.getElementById('cal-scrape');
+  const progressEl = document.getElementById('cal-progress');
+
+  scrapeBtn.disabled = true;
+  progressEl.textContent = `Reading ${friendProfileUrl}'s recent posts… this can take up to a minute.`;
+
+  try {
+    const resp = await sendMsg(MSG.SCRAPE_FRIEND_PROFILE, { friendProfileUrl });
+
+    if (resp?.error) {
+      if (resp.code === 'SCRAPING_DISABLED') {
+        // Background reading is off — show the exact reason where the user is looking.
+        showToast(resp.error, 'error');
+        progressEl.textContent = resp.error;
+      } else {
+        showToast(`Couldn't read that profile: ${resp.error}`, 'error');
+        progressEl.textContent = '';
+      }
+      return;
+    }
+
+    // Preserve scrape order (newest-first) — only filter by selection,
+    // never re-sort by click order, so oldest-first-among-selected holds.
+    _calScrapedPosts = (resp.posts || []).map(p => ({
+      text: p.text, rawTimestamp: p.rawTimestamp || null,
+      reactions: p.reactions ?? null, comments: p.comments ?? null, reposts: p.reposts ?? null,
+      imageUrl: p.imageUrl || null,
+      selected: true,
+    }));
+    progressEl.textContent = `Found ${_calScrapedPosts.length} posts. Review and pick which to use below.`;
+    renderFriendPostChecklist();
+    document.getElementById('cal-post-checklist-card').hidden = false;
+  } catch (e) {
+    showToast(`Something went wrong: ${e.message}`, 'error');
+    progressEl.textContent = '';
+  } finally {
+    scrapeBtn.disabled = false;
+  }
+}
+
+function formatEngagement(p) {
+  const parts = [];
+  if (p.reactions != null) parts.push(`👍 ${p.reactions.toLocaleString()}`);
+  if (p.comments != null) parts.push(`💬 ${p.comments.toLocaleString()}`);
+  if (p.reposts != null) parts.push(`🔁 ${p.reposts.toLocaleString()}`);
+  return parts.length ? parts.join('  ') : 'Engagement unknown';
+}
+
+function renderFriendPostChecklist() {
+  const el = document.getElementById('cal-post-checklist');
+  const PREVIEW_LEN = 220;
+  el.innerHTML = _calScrapedPosts.map((p, i) => {
+    const truncated = p.text.length > PREVIEW_LEN;
+    return `
+    <div class="cal-post-check-item">
+      <input type="checkbox" class="cal-post-checkbox" data-idx="${i}" ${p.selected ? 'checked' : ''}>
+      ${p.imageUrl ? `<img class="cal-post-check-thumb" src="${escapeHTML(p.imageUrl)}" alt="Post image" loading="lazy">` : ''}
+      <div class="cal-post-check-body">
+        <div class="cal-post-check-meta">${escapeHTML(p.rawTimestamp || 'Unknown date')} · ${escapeHTML(formatEngagement(p))}</div>
+        <div class="cal-post-check-text" data-idx="${i}" data-expanded="false">${escapeHTML(p.text.slice(0, PREVIEW_LEN))}${truncated ? '…' : ''}</div>
+        ${truncated ? `<button type="button" class="cal-post-expand-btn" data-idx="${i}">Show full post</button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+
+  el.querySelectorAll('.cal-post-checkbox').forEach(cb => {
+    cb.addEventListener('change', () => {
+      _calScrapedPosts[Number(cb.dataset.idx)].selected = cb.checked;
+      updateChecklistCount();
+    });
+  });
+
+  el.querySelectorAll('.cal-post-expand-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = Number(btn.dataset.idx);
+      const textEl = el.querySelector(`.cal-post-check-text[data-idx="${idx}"]`);
+      const expanded = textEl.dataset.expanded === 'true';
+      const fullText = _calScrapedPosts[idx].text;
+      textEl.textContent = expanded ? fullText.slice(0, PREVIEW_LEN) + '…' : fullText;
+      textEl.dataset.expanded = expanded ? 'false' : 'true';
+      btn.textContent = expanded ? 'Show full post' : 'Show less';
+    });
+  });
+
+  updateChecklistCount();
+}
+
+function updateChecklistCount() {
+  const n = _calScrapedPosts.filter(p => p.selected).length;
+  document.getElementById('cal-post-checklist-count').textContent = `${n} selected`;
+  const genBtn = document.getElementById('cal-generate-step2');
+  genBtn.textContent = `2. Generate calendar (${n} selected)`;
+  genBtn.disabled = n === 0;
+}
+
+/**
+ * Generate one day with a few retries (covers transient backend hiccups over
+ * a long batch) before giving up and marking it 'failed'. Never throws —
+ * always returns either a real post or a failed-placeholder, so the batch
+ * loop never has to stop early on one bad day.
+ */
+async function generateDayWithRetry(day, stream, { retries = 3, retryDelayMs = 2000 } = {}) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    const resp = await sendMsg(MSG.GENERATE_CALENDAR_POST, { day, stream });
+    if (resp?.post) return { post: resp.post };
+    lastError = resp?.error || 'unknown error';
+    if (attempt < retries) await new Promise(r => setTimeout(r, retryDelayMs));
+  }
+  return {
+    post: {
+      day: typeof day === 'object' && day ? day.day : day, stream, status: 'failed',
+      postText: '', suggestedTime: '', timezoneLabel: '',
+      failReason: lastError,
+    },
+  };
+}
+
+/**
+ * Step 2: sequential generation, one day at a time — gentle on a local
+ * Ollama backend, and lets Cancel take effect between days (mirrors
+ * draftAll()). Completed days are persisted incrementally so a cancel/crash
+ * mid-run doesn't lose earlier days. Only runs against the user's SELECTED
+ * subset from the checklist above (still oldest-first among selections).
+ * Each day gets a few retries before being marked 'failed' rather than
+ * stopping the whole batch — a long (e.g. 90-day) run should never die
+ * partway through over one transient failure.
+ */
+async function generateCalendarBatch() {
+  const friendProfileUrl = document.getElementById('cal-friend-url').value.trim();
+  const ratioFriend = Number(document.getElementById('cal-ratio-friend').value);
+  const totalDays = Math.max(1, Math.min(120, parseInt(document.getElementById('cal-days').value) || 30));
+  const timeSlot = selectedTimeSlot();
+  const selectedPosts = _calScrapedPosts.filter(p => p.selected).map(p => ({ text: p.text, rawTimestamp: p.rawTimestamp, imageUrl: p.imageUrl || null }));
+  const startDateStr = document.getElementById('cal-start-date').value;
+  // Parse as LOCAL midnight (y, m-1, d) — `new Date('YYYY-MM-DD')` would be UTC.
+  const [sy, sm, sd] = (startDateStr || '').split('-').map(Number);
+  const startDate = sy && sm && sd ? new Date(sy, sm - 1, sd) : new Date();
+
+  if (!selectedPosts.length) { showToast('Select at least one friend post, or scrape again.', 'error'); return; }
+
+  const genBtn = document.getElementById('cal-generate-step2');
+  const cancelBtn = document.getElementById('cal-cancel');
+  const progressEl = document.getElementById('cal-progress');
+
+  genBtn.disabled = true;
+  cancelBtn.hidden = false;
+  _calCancelled = false;
+
+  try {
+    progressEl.textContent = `Building calendar from ${selectedPosts.length} selected posts…`;
+    const build = await sendMsg(MSG.BUILD_CALENDAR_BATCH, {
+      friendProfileUrl, ratio: { friend: ratioFriend, trending: 100 - ratioFriend }, timeSlot, totalDays, selectedPosts,
+    });
+
+    if (build?.error) {
+      showToast(`Couldn't build the calendar: ${build.error}`, 'error');
+      progressEl.textContent = '';
+      return;
+    }
+
+    if (build.shortfall > 0) {
+      const from = build.pattern.length - build.shortfall + 1;
+      showToast(`You selected ${build.friendPostsFound} posts — days ${from}-${build.pattern.length} will use trending instead.`);
+    }
+
+    let done = 0;
+    let failed = 0;
+    for (let i = 0; i < build.pattern.length; i++) {
+      if (_calCancelled) break;
+      const day = i + 1;
+      const stream = build.pattern[i];
+      progressEl.textContent = `Generating day ${day} of ${build.pattern.length} (${stream})…`;
+
+      const { post } = await generateDayWithRetry(day, stream);
+      const scheduledDate = new Date(startDate);
+      scheduledDate.setDate(scheduledDate.getDate() + i);
+      post.scheduledDate = localDateStr(scheduledDate);
+      await sendMsg(MSG.ADD_CALENDAR_POSTS, { posts: [post] });
+      if (post.status === 'failed') {
+        failed++;
+        showToast(`Day ${day} failed after retries: ${post.failReason}`, 'error');
+      }
+      done++;
+    }
+
+    const failedNote = failed > 0 ? ` (${failed} failed — click a failed day to retry it)` : '';
+    progressEl.textContent = _calCancelled
+      ? `Cancelled after ${done} of ${build.pattern.length} days.${failedNote}`
+      : `Generated ${done - failed} of ${build.pattern.length} posts.${failedNote}`;
+  } catch (e) {
+    showToast(`Something went wrong: ${e.message}`, 'error');
+    progressEl.textContent = '';
+  } finally {
+    genBtn.disabled = false;
+    cancelBtn.hidden = true;
+    renderCalendarGrid().catch(() => {});
+  }
+}
+
+async function renderCalendarGrid() {
+  const resp = await sendMsg(MSG.GET_CALENDAR);
+  const posts = resp?.posts || [];
+  document.getElementById('cal-count').textContent = `${posts.length} ${posts.length === 1 ? 'post' : 'posts'}`;
+
+  // Calendar posts are keyed by REAL scheduled date (YYYY-MM-DD), computed
+  // from the batch's start date + day offset — not the bare 1-N batch index,
+  // which would collide across month boundaries for anything past ~31 days.
+  // Older posts generated before scheduledDate existed fall back to a rough
+  // day-of-month key so they still render somewhere rather than vanishing.
+  const byDate = new Map(posts.filter(p => p.scheduledDate).map(p => [p.scheduledDate, p]));
+  const legacyByDay = new Map(posts.filter(p => !p.scheduledDate).map(p => [p.day, p]));
+
+  const y = _calMonthCursor.getFullYear();
+  const m = _calMonthCursor.getMonth();
+  document.getElementById('cal-month-label').textContent =
+    _calMonthCursor.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+  const firstOfMonth = new Date(y, m, 1);
+  const startOffset = firstOfMonth.getDay();
+  const daysInMonth = new Date(y, m + 1, 0).getDate();
+
+  const cells = [];
+  for (let i = 0; i < startOffset; i++) cells.push(null);
+  for (let day = 1; day <= daysInMonth; day++) cells.push(day);
+
+  const grid = document.getElementById('cal-grid');
+  grid.innerHTML = cells.map(day => {
+    if (!day) return `<div class="cal-day cal-day-empty"></div>`;
+    const iso = `${y}-${String(m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const post = byDate.get(iso) || legacyByDay.get(day);
+    const statusClass = post ? `cal-day-${escapeHTML(post.status || 'draft')}` : '';
+    const badge = post ? (post.stream === 'friend' ? '🧑‍🤝‍🧑' : '📈') : '';
+    const failedNote = post?.status === 'failed' ? `<div class="cal-day-failed-note">⚠ Failed — click to retry</div>` : '';
+    return `
+      <div class="cal-day ${statusClass}" data-iso="${iso}" data-legacy-day="${day}">
+        <div class="cal-day-top">
+          <span class="cal-day-num">${day}</span>
+          <span class="cal-day-badge">${badge}</span>
+        </div>
+        ${post && post.status !== 'failed' ? `<div class="cal-day-time">${escapeHTML(post.suggestedTime || '')} ${escapeHTML(post.timezoneLabel || '')}</div>` : ''}
+        ${post?.sourceImageUrl ? `<img class="cal-day-thumb" src="${escapeHTML(post.sourceImageUrl)}" alt="" loading="lazy">` : ''}
+        ${failedNote}
+        ${post && post.status !== 'failed' ? `<div class="cal-day-preview">${escapeHTML((post.postText || '').slice(0, 100))}</div>` : ''}
+      </div>`;
+  }).join('');
+
+  grid.querySelectorAll('.cal-day:not(.cal-day-empty)').forEach(cell =>
+    cell.addEventListener('click', () => {
+      const iso = cell.dataset.iso;
+      const post = byDate.get(iso) || legacyByDay.get(Number(cell.dataset.legacyDay));
+      if (post?.status === 'failed') { retryFailedDay(post); return; }
+      if (post) openCalendarModal(post);
+    }));
+}
+
+/** Retry a single failed day in place, without touching the rest of the batch. */
+async function retryFailedDay(failedPost) {
+  showToast(`Retrying day ${failedPost.day}…`);
+  // A failed friend day may already carry its source post — reuse it (contract:
+  // pass the existing day object) rather than consuming the next unused one.
+  const dayArg = failedPost.stream === 'friend' && failedPost.sourceFriendPostText ? failedPost : failedPost.day;
+  const { post } = await generateDayWithRetry(dayArg, failedPost.stream);
+  post.day = failedPost.day;
+  post.scheduledDate = failedPost.scheduledDate;
+  await sendMsg(MSG.UPDATE_CALENDAR_POST, { id: failedPost.id, patch: post });
+  if (post.status === 'failed') {
+    showToast(`Day ${failedPost.day} failed again: ${post.failReason}`, 'error');
+  } else {
+    showToast(`Day ${failedPost.day} generated.`);
+  }
+  renderCalendarGrid();
+}
+
+function initCalendarModal() {
+  document.getElementById('cal-modal-close').addEventListener('click', closeCalendarModal);
+  document.getElementById('cal-modal-overlay').addEventListener('click', (e) => {
+    if (e.target.id === 'cal-modal-overlay') closeCalendarModal();
+  });
+  document.getElementById('cal-modal-save').addEventListener('click', saveCalendarModal);
+  document.getElementById('cal-modal-regenerate').addEventListener('click', regenerateCalendarDay);
+  document.getElementById('cal-modal-posted').addEventListener('click', () =>
+    setCalendarStatus('posted', { postedAt: Date.now() }));
+  document.getElementById('cal-modal-delete').addEventListener('click', deleteCalendarModalPost);
+}
+
+function openCalendarModal(post) {
+  _calModalPost = post;
+  const streamLabel = post.stream === 'friend' ? 'Friend-derived' : 'Trending';
+  const timeLabel = post.suggestedTime ? ` — ${post.suggestedTime} ${post.timezoneLabel || ''}`.trimEnd() : '';
+  document.getElementById('cal-modal-title').textContent = `Day ${post.day} — ${streamLabel}${timeLabel}`;
+  document.getElementById('cal-modal-content').value = post.postText || '';
+
+  const imageEl = document.getElementById('cal-modal-image');
+  if (post.sourceImageUrl) {
+    imageEl.src = post.sourceImageUrl;
+    imageEl.hidden = false;
+  } else {
+    imageEl.hidden = true;
+    imageEl.src = '';
+  }
+
+  const sourceEl = document.getElementById('cal-modal-source');
+  if (post.stream === 'friend' && post.sourceFriendPostText) {
+    document.getElementById('cal-modal-source-summary').textContent = 'Source post (reference only)';
+    document.getElementById('cal-modal-source-text').textContent = post.sourceFriendPostText;
+    sourceEl.hidden = false;
+  } else {
+    sourceEl.hidden = true;
+  }
+
+  document.getElementById('cal-modal-overlay').hidden = false;
+}
+
+function closeCalendarModal() {
+  document.getElementById('cal-modal-overlay').hidden = true;
+  _calModalPost = null;
+}
+
+async function saveCalendarModal() {
+  if (!_calModalPost) return;
+  const postText = document.getElementById('cal-modal-content').value;
+  const status = postText !== _calModalPost.postText ? 'edited' : _calModalPost.status;
+  await sendMsg(MSG.UPDATE_CALENDAR_POST, { id: _calModalPost.id, patch: { postText, status } });
+  showToast('Saved.');
+  closeCalendarModal();
+  renderCalendarGrid();
+}
+
+async function regenerateCalendarDay() {
+  if (!_calModalPost) return;
+  const btn = document.getElementById('cal-modal-regenerate');
+  btn.disabled = true;
+  // Pass the EXISTING day object (incl. sourceFriendPostText) so the
+  // background re-adapts the same friend post instead of consuming the next one.
+  const isFriend = _calModalPost.stream === 'friend';
+  const resp = await sendMsg(MSG.GENERATE_CALENDAR_POST, {
+    day: isFriend ? _calModalPost : _calModalPost.day,
+    stream: _calModalPost.stream,
+  });
+  btn.disabled = false;
+  if (resp?.post) {
+    document.getElementById('cal-modal-content').value = resp.post.postText;
+  } else {
+    showToast(`Regenerate failed: ${resp?.error || 'unknown error'}`, 'error');
+  }
+}
+
+async function setCalendarStatus(status, extraPatch = {}) {
+  if (!_calModalPost) return;
+  await sendMsg(MSG.UPDATE_CALENDAR_POST, { id: _calModalPost.id, patch: { status, ...extraPatch } });
+  showToast(status === 'posted' ? '✓ Marked as posted!' : `Status: ${status}`);
+  closeCalendarModal();
+  renderCalendarGrid();
+}
+
+async function deleteCalendarModalPost() {
+  if (!_calModalPost) return;
+  if (!confirm('Delete this day\'s post?')) return;
+  await sendMsg(MSG.DELETE_CALENDAR_POST, { id: _calModalPost.id });
+  closeCalendarModal();
+  renderCalendarGrid();
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -507,6 +1075,12 @@ function escapeHTML(str) {
 
 async function main() {
   initTabs();
+  initHistoryTab();
+  initCalendarTab();
+
+  if (location.hash === '#calendar') {
+    document.querySelector('[data-tab="calendar"]')?.click();
+  }
 
   const settings = await sendMsg(MSG.GET_SETTINGS);
   await Promise.all([

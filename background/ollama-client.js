@@ -6,6 +6,23 @@
 
 import logger from '../utils/logger.js';
 
+const CHAT_TIMEOUT_MS = 180_000;
+
+/** Combine the caller's signal (may be undefined) with a hard timeout. */
+function withTimeout(signal, ms) {
+  const timeout = AbortSignal.timeout(ms);
+  if (!signal) return timeout;
+  if (typeof AbortSignal.any === 'function') return AbortSignal.any([signal, timeout]);
+  // Chrome < 116 has no AbortSignal.any — combine by hand.
+  const ctrl = new AbortController();
+  const relay = (s) => () => ctrl.abort(s.reason);
+  for (const s of [signal, timeout]) {
+    if (s.aborted) { ctrl.abort(s.reason); break; }
+    s.addEventListener('abort', relay(s), { once: true });
+  }
+  return ctrl.signal;
+}
+
 export class OllamaClient {
   constructor(baseUrl = 'http://localhost:11434') {
     this.baseUrl = baseUrl.replace(/\/$/, '');
@@ -72,7 +89,7 @@ export class OllamaClient {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-      signal: signal || AbortSignal.timeout(180_000), // 180s timeout
+      signal: withTimeout(signal, CHAT_TIMEOUT_MS), // caller abort OR 180s timeout
     });
 
     logger.timeEnd('ollama-chat');

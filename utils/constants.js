@@ -156,17 +156,31 @@ export const STORAGE_KEYS = {
   ENGAGEMENT_QUEUE: 'liar_engagement_queue',
   COMMENTS_LOG: 'liar_comments_log',
   CONNECTIONS_QUEUE: 'liar_connections_queue',
+  CONTENT_CALENDAR: 'liar_content_calendar',
+  CALENDAR_BATCH_CONFIG: 'liar_calendar_batch_config',
 };
 
 // ─── Default Settings ──────────────────────────────────────────────────────
 export const DEFAULT_SETTINGS = {
   enabled: true,
-  llmBackend: 'ollama',       // 'ollama' | 'gemini'
+  llmBackend: 'ollama',       // 'ollama' | 'gemini' | 'claude' | 'auto'
   ollamaUrl: 'http://localhost:11434',
   ollamaModel: 'gemma2:2b',
   geminiApiKey: '',
   geminiModel: 'gemini-flash-latest',
-  maxReplyLength: 150,        // words
+  // Claude: either the local Claude Code bridge (`npm run bridge`, uses the
+  // user's Claude Code login) or the Anthropic API with the user's own key.
+  claudeMode: 'bridge',       // 'bridge' | 'api'
+  claudeBridgeUrl: 'http://localhost:11435',
+  claudeBridgeToken: '',      // optional; must match BRIDGE_TOKEN if the bridge sets one
+  claudeApiKey: '',
+  claudeModel: 'claude-opus-5-5',
+  // Opening hidden background tabs to read other people's profiles/activity
+  // (deep welcome drafts, friend-sync calendar). Off by default: LinkedIn's
+  // User Agreement prohibits automated scraping and each visit shows up as a
+  // profile view.
+  allowBackgroundScraping: false,
+  maxReplyLength: 45,         // words — replies are deliberately short (hard cap 45 in prompt-builder)
   temperature: 0.85,          // higher = more voice variety, less generic sameness
   autoLearnFromApproved: true,
   debugMode: false,
@@ -262,7 +276,36 @@ export const MSG = {
   UPDATE_CONNECTION: 'UPDATE_CONNECTION',  // payload: { id, patch } → { success }
   CLEAR_CONNECTIONS: 'CLEAR_CONNECTIONS',  // → { success }
   REQUEST_SCAN_CONNECTIONS: 'REQUEST_SCAN_CONNECTIONS', // panel→content: scan connections page
+  // ── Content calendar (friend-sync + trending, draft-only, no auto-posting) ──
+  SCRAPE_FRIEND_POSTS:    'SCRAPE_FRIEND_POSTS',    // bg→content(activity tab): → { posts:[{text, rawTimestamp, approxDaysAgo}] }
+  SCRAPE_FRIEND_PROFILE:  'SCRAPE_FRIEND_PROFILE',  // options→bg: { friendProfileUrl } → { posts:[{text, rawTimestamp}], friendProfileUrl } | { error }
+  BUILD_CALENDAR_BATCH:   'BUILD_CALENDAR_BATCH',   // options→bg: { friendProfileUrl, ratio, timeSlot, totalDays, selectedPosts } → { pattern, shortfall, friendPostsFound } | { error }
+  GENERATE_CALENDAR_POST: 'GENERATE_CALENDAR_POST', // options→bg: { day, stream } → { post } | { error }
+  GET_CALENDAR:           'GET_CALENDAR',           // → { posts }
+  ADD_CALENDAR_POSTS:     'ADD_CALENDAR_POSTS',     // payload: { posts:[...] } → { added }
+  UPDATE_CALENDAR_POST:   'UPDATE_CALENDAR_POST',   // payload: { id, patch } → { success }
+  DELETE_CALENDAR_POST:   'DELETE_CALENDAR_POST',   // payload: { id } → { success }
+  CLEAR_CALENDAR:         'CLEAR_CALENDAR',         // → { success }
+  GET_CALENDAR_BATCH_CONFIG: 'GET_CALENDAR_BATCH_CONFIG', // → { config }
+  // ── Identity / settings broadcast / backend status ──
+  SAVE_IDENTITY:     'SAVE_IDENTITY',      // content→bg: { name, profileUrl }
+  GET_IDENTITY:      'GET_IDENTITY',       // → { name, profileUrl }
+  SETTINGS_CHANGED:  'SETTINGS_CHANGED',   // bg→tabs/popup broadcast (never carries API keys)
+  CHECK_BACKEND:     'CHECK_BACKEND',      // → { alive, backend, label, model, isLocal, error? } for the selected backend
 };
+
+// ─── LLM backends (labels shown in UI; isLocal drives privacy copy) ─────────
+export const BACKENDS = {
+  ollama: { label: 'Ollama',              isLocal: true  },
+  gemini: { label: 'Gemini',              isLocal: false },
+  claude: { label: 'Claude',              isLocal: false }, // bridge or API — both send data to Anthropic
+};
+
+export const CLAUDE_MODELS = [
+  { id: 'claude-opus-5-5',   label: 'Claude Opus 5.5 — best quality' },
+  { id: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5 — faster, cheaper' },
+  { id: 'claude-haiku-4-5',  label: 'Claude Haiku 4.5 — fastest' },
+];
 
 // ─── UI Constants ──────────────────────────────────────────────────────────
 export const UI = {

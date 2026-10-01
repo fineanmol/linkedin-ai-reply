@@ -19,15 +19,9 @@ async function init() {
   if (toggle) toggle.checked = settings?.enabled !== false;
 
   toggle?.addEventListener('change', async () => {
+    // SAVE_SETTINGS merges this partial patch; the background then broadcasts
+    // SETTINGS_CHANGED (sanitized) to every LinkedIn tab, incl. the active one.
     await sendMsg(MSG.SAVE_SETTINGS, { enabled: toggle.checked });
-    // Notify active LinkedIn tab
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab?.id) {
-      chrome.tabs.sendMessage(tab.id, {
-        type: 'SETTINGS_CHANGED',
-        payload: { enabled: toggle.checked },
-      }).catch(() => {});
-    }
   });
 
   // Check backend status (backend-aware)
@@ -88,66 +82,60 @@ async function buildQueue() {
   }
 }
 
+/**
+ * Status line, setup hint and footer — all driven by the background's
+ * CHECK_BACKEND answer for the SELECTED backend, so the label is truthful
+ * (e.g. "Claude (Claude Code bridge)") and "Local AI" only ever appears when
+ * the backend really is local (Ollama).
+ */
 async function checkBackendStatus(settings) {
   const dot = document.getElementById('ollama-dot');
   const label = document.getElementById('ollama-label');
   const modelEl = document.getElementById('current-model');
   const hint = document.getElementById('setup-hint');
-  const backend = settings?.llmBackend || 'ollama';
+  const footerMode = document.getElementById('footer-mode');
 
-  // ── Gemini selected ────────────────────────────────────────────────────
-  if (backend === 'gemini') {
-    const hasKey = !!settings?.geminiApiKey;
-    dot.className = `status-dot ${hasKey ? 'online' : 'offline'}`;
-    label.textContent = hasKey ? 'Gemini API ready' : 'Gemini API key missing';
-    modelEl.textContent = settings?.geminiModel || 'gemini-flash-latest';
-    // Show hint only if key is missing
-    hint.hidden = hasKey;
-    if (!hasKey) {
-      hint.querySelector('strong').textContent = '☁️ Gemini key missing';
-      hint.querySelector('p').innerHTML = 'Add your API key in <b>Settings → LLM Backend</b>';
-    }
-    return;
+  const r = await sendMsg(MSG.CHECK_BACKEND);
+  const ok = r && typeof r.alive === 'boolean';
+  const backend = (ok && r.backend) || settings?.llmBackend || 'ollama';
+  const name = (ok && r.label) || backend;
+  const isLocal = ok ? r.isLocal === true : backend === 'ollama';
+
+  if (footerMode) {
+    footerMode.textContent = isLocal ? 'Privacy-first · Local AI' : `Cloud AI · ${name}`;
   }
 
-  // ── Auto mode ──────────────────────────────────────────────────────────
-  if (backend === 'auto') {
-    const ollamaResult = await sendMsg(MSG.CHECK_OLLAMA);
-    if (ollamaResult?.alive) {
-      dot.className = 'status-dot online';
-      label.textContent = 'Auto → Ollama active';
-      modelEl.textContent = settings?.ollamaModel || 'gemma2:2b';
-      hint.hidden = true;
-    } else if (settings?.geminiApiKey) {
-      dot.className = 'status-dot online';
-      label.textContent = 'Auto → Gemini fallback';
-      modelEl.textContent = settings?.geminiModel || 'gemini-flash-latest';
-      hint.hidden = true;
-    } else {
-      dot.className = 'status-dot offline';
-      label.textContent = 'No backend available';
-      modelEl.textContent = '';
-      hint.hidden = false;
-      hint.querySelector('strong').textContent = '⚡ No backend available';
-      hint.querySelector('p').innerHTML = 'Start Ollama: <code>ollama serve</code><br>or add a Gemini API key in Settings';
-    }
-    return;
-  }
-
-  // ── Ollama selected (default) ──────────────────────────────────────────
-  const result = await sendMsg(MSG.CHECK_OLLAMA);
-  if (result?.alive) {
+  if (ok && r.alive) {
     dot.className = 'status-dot online';
-    label.textContent = 'Ollama connected';
-    modelEl.textContent = settings?.ollamaModel || 'gemma2:2b';
+    label.textContent = `${name} connected`;
+    modelEl.textContent = r.model || '';
     hint.hidden = true;
+    return;
+  }
+
+  dot.className = 'status-dot offline';
+  label.textContent = ok ? `${name} not available` : 'Backend status unavailable';
+  modelEl.textContent = '';
+  label.title = r?.error || '';
+  hint.hidden = false;
+
+  const strong = hint.querySelector('strong');
+  const p = hint.querySelector('p');
+  if (backend === 'ollama') {
+    strong.textContent = '⚡ Ollama not running';
+    p.innerHTML = 'Start it: <code>ollama serve</code>';
+  } else if (backend === 'claude' && settings?.claudeMode !== 'api') {
+    strong.textContent = '⚡ Claude bridge not running';
+    p.innerHTML = 'Start it: <code>npm run bridge</code>';
+  } else if (backend === 'claude') {
+    strong.textContent = '☁️ Claude API not ready';
+    p.innerHTML = 'Add your key in <b>Settings → LLM Backend</b>';
+  } else if (backend === 'gemini') {
+    strong.textContent = '☁️ Gemini not ready';
+    p.innerHTML = 'Add your key in <b>Settings → LLM Backend</b>';
   } else {
-    dot.className = 'status-dot offline';
-    label.textContent = 'Ollama not running';
-    modelEl.textContent = '';
-    hint.hidden = false;
-    hint.querySelector('strong').textContent = '⚡ Ollama not running';
-    hint.querySelector('p').innerHTML = 'Start it: <code>ollama serve</code>';
+    strong.textContent = '⚡ No backend available';
+    p.innerHTML = 'Start Ollama: <code>ollama serve</code><br>or add your key in <b>Settings</b>';
   }
 }
 

@@ -190,6 +190,22 @@
     .yes { color: var(--green); font-weight: 600; }
     .no  { color: #f87171; font-weight: 600; }
 
+    .draft-note {
+      background: #f8717118;
+      border: 1px solid #f8717160;
+      color: #fca5a5;
+      border-radius: 10px;
+      padding: 0.75rem 1rem;
+      margin-bottom: 2rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      text-align: center;
+    }
+
+    .warn { color: #fbbf24; font-weight: 600; }
+
+    code { font-size: 0.85rem; color: var(--accent); }
+
     a { color: var(--accent); text-decoration: none; }
     a:hover { text-decoration: underline; }
 
@@ -214,107 +230,144 @@
 
 <div class="container">
 
+  <div class="draft-note" role="note">Draft — review by legal/compliance before publishing.</div>
+
   <div class="hero">
-    <div class="badge">Privacy First</div>
+    <div class="badge">You choose where your data goes</div>
     <h2>Privacy Policy</h2>
-    <p>We built this extension with privacy as a core feature, not an afterthought.</p>
+    <p>This page describes exactly which data the extension reads, where it is stored, and which AI provider it is sent to — depending on the backend you select.</p>
   </div>
 
   <!-- TL;DR -->
   <section>
     <h3><span class="icon">⚡</span> The Short Version</h3>
     <ul>
-      <li>We do not collect, store, or sell any personal data.</li>
-      <li>Your LinkedIn content never leaves your browser — except optionally to generate a reply via AI.</li>
-      <li>With local Ollama mode, everything runs 100% on your machine. Nothing goes anywhere.</li>
-      <li>With Gemini mode, only the comment + post text is sent to Google's API. No account data, no names, no tracking.</li>
-      <li>No analytics, no telemetry, no third-party trackers of any kind.</li>
+      <li>We (the extension authors) run no servers and collect nothing. There is no analytics, telemetry, or tracking.</li>
+      <li>All extension data is stored in your browser's <code>chrome.storage.local</code>.</li>
+      <li><strong style="color:var(--text)">Ollama</strong> (local): AI generation runs on your own machine. Nothing is sent to a cloud AI provider.</li>
+      <li><strong style="color:var(--text)">Gemini</strong> (cloud): the text needed to generate a draft is sent to Google.</li>
+      <li><strong style="color:var(--text)">Claude</strong> (cloud), via the local Claude Code bridge <em>or</em> your Anthropic API key: that text is sent to Anthropic.</li>
+      <li><strong style="color:var(--text)">Auto</strong> mode uses Ollama when it is running and otherwise falls back to Gemini (cloud).</li>
+      <li>Nothing is ever posted, sent, or published to LinkedIn automatically. You copy, paste, and post everything yourself.</li>
     </ul>
   </section>
 
-  <!-- What we collect -->
+  <!-- What is sent -->
   <section>
-    <h3><span class="icon">📋</span> What Data Is Accessed</h3>
-    <p style="margin-bottom:1rem">The extension reads the following from LinkedIn pages to function:</p>
+    <h3><span class="icon">📋</span> What Data Is Read and Sent</h3>
+    <p style="margin-bottom:1rem">To generate a draft, the extension builds a prompt from the data below. With Ollama the prompt stays on your machine; with Gemini or Claude the prompt is sent to that provider.</p>
     <table>
       <tr>
         <th>Data</th>
         <th>Why</th>
-        <th>Stored?</th>
-        <th>Sent externally?</th>
+        <th>Stored locally?</th>
+        <th>Sent to the AI backend?</th>
       </tr>
       <tr>
-        <td><strong>Comment text</strong></td>
-        <td>To generate a relevant reply</td>
-        <td class="no">No</td>
-        <td>Only to AI API if you use Gemini mode</td>
+        <td><strong>Post text and comment text</strong></td>
+        <td>The content you are replying to or commenting on</td>
+        <td class="yes">Snippets, in reply history / queue / comments log</td>
+        <td>Yes — on cloud backends this leaves your device</td>
       </tr>
       <tr>
-        <td><strong>Post text</strong></td>
-        <td>Context for generating replies</td>
-        <td class="no">No</td>
-        <td>Only to AI API if you use Gemini mode</td>
+        <td><strong>Author names</strong> (and headlines where shown)</td>
+        <td>Address the person you are replying to</td>
+        <td class="yes">Yes</td>
+        <td>Yes</td>
       </tr>
       <tr>
-        <td><strong>Your display name</strong></td>
-        <td>To personalise the reply voice</td>
-        <td class="yes">Locally only</td>
-        <td class="no">Never</td>
+        <td><strong>Your name</strong></td>
+        <td>Detect your own posts and write in your voice</td>
+        <td class="yes">Yes</td>
+        <td>Yes</td>
       </tr>
       <tr>
-        <td><strong>Approved replies</strong></td>
-        <td>Style learning (stored locally)</td>
-        <td class="yes">Locally only</td>
-        <td class="no">Never</td>
+        <td><strong>Style samples and approved replies</strong></td>
+        <td>Sent as style context so drafts sound like you</td>
+        <td class="yes">Yes (up to 100 samples)</td>
+        <td>Yes</td>
       </tr>
       <tr>
-        <td><strong>API key (Gemini)</strong></td>
-        <td>To authenticate with Google AI</td>
-        <td class="yes">Locally only</td>
-        <td>Sent only to Google's API endpoint</td>
+        <td><strong>New connections' names/headlines</strong></td>
+        <td>Draft welcome messages</td>
+        <td class="yes">Yes</td>
+        <td>Yes</td>
+      </tr>
+      <tr>
+        <td><strong>Other people's profile About, headline, and recent posts</strong></td>
+        <td>Deep welcome drafts and the Content Calendar's friend-post source</td>
+        <td class="yes">Calendar source posts only</td>
+        <td><span class="warn">Only if you turn on background profile reading</span> (off by default)</td>
+      </tr>
+      <tr>
+        <td><strong>API keys / bridge token</strong></td>
+        <td>Authenticate with Google, Anthropic, or your local bridge</td>
+        <td class="yes">Yes</td>
+        <td>Only to that provider / your local bridge — never to LinkedIn pages</td>
       </tr>
     </table>
   </section>
 
   <!-- AI Backends -->
   <section>
-    <h3><span class="icon">🤖</span> AI Backends & Data Flow</h3>
+    <h3><span class="icon">🤖</span> AI Backends &amp; Data Flow</h3>
 
-    <p style="margin-bottom:1rem"><strong style="color:var(--text)">Ollama (Local Mode) — Maximum Privacy</strong></p>
+    <p style="margin-bottom:1rem"><strong style="color:var(--text)">Ollama — local</strong></p>
     <ul>
-      <li>All AI inference runs locally on your machine via Ollama.</li>
-      <li>No data is sent to any external server. Zero network requests for AI generation.</li>
-      <li>Recommended if you handle sensitive LinkedIn conversations.</li>
+      <li>Requests go to Ollama on your own machine (<code>http://localhost:11434</code>).</li>
+      <li>No prompt is sent to a cloud AI provider.</li>
     </ul>
 
-    <div style="margin-top:1.5rem; margin-bottom:1rem">
-      <strong style="color:var(--text)">Gemini (Cloud Mode)</strong>
-    </div>
+    <p style="margin:1.5rem 0 1rem"><strong style="color:var(--text)">Gemini — Google cloud</strong></p>
     <ul>
-      <li>Comment text and post text are sent to Google's Generative Language API (<code style="font-size:0.85rem;color:var(--accent)">generativelanguage.googleapis.com</code>) to generate a reply.</li>
-      <li>Your Google AI Studio API key is stored locally in Chrome's storage and sent directly to Google's API — it is never seen by us.</li>
-      <li>Google's data handling is governed by <a href="https://policies.google.com/privacy" target="_blank">Google's Privacy Policy</a>.</li>
+      <li>Prompts are sent to Google's Generative Language API (<code>generativelanguage.googleapis.com</code>) with your own API key.</li>
+      <li>Google's handling of that data is governed by <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google's Privacy Policy</a> and the Gemini API terms.</li>
+    </ul>
+
+    <p style="margin:1.5rem 0 1rem"><strong style="color:var(--text)">Claude via the Claude Code bridge — Anthropic cloud</strong></p>
+    <ul>
+      <li>The extension sends prompts to a small bridge running on your machine (<code>http://localhost:11435</code>, started with <code>npm run bridge</code>).</li>
+      <li>The bridge passes each prompt to the Claude Code CLI, which sends it to Anthropic using your Claude Code login. The data therefore leaves your device even though the bridge itself is local.</li>
+    </ul>
+
+    <p style="margin:1.5rem 0 1rem"><strong style="color:var(--text)">Claude via the Anthropic API — Anthropic cloud</strong></p>
+    <ul>
+      <li>Prompts are sent directly to <code>api.anthropic.com</code> with your own API key.</li>
+      <li>Anthropic's handling of that data is governed by <a href="https://www.anthropic.com/legal/privacy" target="_blank" rel="noopener">Anthropic's Privacy Policy</a> and its commercial terms.</li>
     </ul>
 
     <div class="highlight">
-      <strong>Important:</strong> In either mode, we never see, log, or store any data on our own servers — because we don't have any servers.
+      <strong>Note:</strong> The extension authors never receive your data. When you choose a cloud backend, the provider you chose (Google or Anthropic) receives the prompt under its own terms.
     </div>
+  </section>
+
+  <!-- Background reading -->
+  <section>
+    <h3><span class="icon">🕵️</span> Background Profile Reading (off by default)</h3>
+    <ul>
+      <li>Two features can open <strong style="color:var(--text)">hidden LinkedIn tabs</strong> to read another person's profile and recent activity: deep welcome-message drafts and the Content Calendar's friend-post scrape.</li>
+      <li>This only happens when you turn on <em>Settings → Advanced → Allow background profile reading</em> and then click the feature. It never runs on a schedule.</li>
+      <li>LinkedIn's User Agreement prohibits automated scraping, and each visit shows up to that person as a profile view. Leave it off unless you accept that risk.</li>
+      <li>The text read this way is used only to build the prompt and is sent to your selected AI backend (cloud for Gemini/Claude).</li>
+    </ul>
   </section>
 
   <!-- Local storage -->
   <section>
     <h3><span class="icon">💾</span> Local Storage</h3>
-    <p style="margin-bottom:1rem">The extension stores the following data <strong style="color:var(--text)">only in your browser's local storage</strong> (Chrome's <code style="font-size:0.85rem;color:var(--accent)">chrome.storage.local</code>):</p>
+    <p style="margin-bottom:1rem">The extension stores the following <strong style="color:var(--text)">only in your browser</strong> (<code>chrome.storage.local</code>):</p>
     <ul>
-      <li>Your settings (enabled/disabled, model selection, reply length)</li>
-      <li>Your Gemini API key (if you choose to use Gemini)</li>
-      <li>Your display name (scraped from LinkedIn for personalisation)</li>
-      <li>Style profile: up to 100 of your approved replies, used to learn your writing style</li>
-      <li>Reply history: up to the 200 most recent generated replies (comment snippet, reply text, and status), shown in the extension's History tab</li>
-      <li>Reply cache: recent generated replies held in memory temporarily to avoid duplicate API calls</li>
+      <li>Settings: backend, models, URLs, reply length, toggles.</li>
+      <li>Your Gemini API key, Anthropic API key, and bridge token, if you enter them. These are never sent to LinkedIn pages.</li>
+      <li>Your display name and profile URL (detected on LinkedIn).</li>
+      <li>Style profile: manual examples plus up to 100 approved replies.</li>
+      <li>Reply history: recent generated replies with a snippet of the comment.</li>
+      <li>Engagement queue and comments log: posts you queued, your drafts, and comments you marked as posted.</li>
+      <li>Connections queue: new connections' names, headlines, and draft messages.</li>
+      <li>Content Calendar: draft posts, plus the friend source posts and image links they were adapted from.</li>
     </ul>
     <div class="highlight">
-      This data never leaves your device and can be cleared at any time by removing the extension or via Chrome's storage settings.
+      You can clear this at any time via <em>Settings → Advanced → Reset All Data</em> or by removing the extension.
     </div>
   </section>
 
@@ -328,49 +381,64 @@
       </tr>
       <tr>
         <td><strong>storage</strong></td>
-        <td>Save your settings, API key, and style profile locally</td>
+        <td>Save settings, keys, style profile, history, queues, and calendar locally.</td>
       </tr>
       <tr>
         <td><strong>activeTab</strong></td>
-        <td>Grants temporary access to the active LinkedIn tab when you interact with the extension</td>
+        <td>Talk to the LinkedIn tab you are on (for example, to build the engagement queue from the popup).</td>
       </tr>
       <tr>
         <td><strong>clipboardWrite</strong></td>
-        <td>Copy the generated reply to your clipboard when you click "Copy"</td>
+        <td>Copy a draft to your clipboard when you click Copy.</td>
       </tr>
       <tr>
-        <td><strong>Host access (linkedin.com)</strong></td>
-        <td>The content script reads the comment DOM and injects the AI Reply button. It never writes through LinkedIn's API.</td>
+        <td><strong>alarms</strong></td>
+        <td>A twice-daily check for a Content Calendar draft scheduled for today.</td>
+      </tr>
+      <tr>
+        <td><strong>notifications</strong></td>
+        <td>Remind you to review today's calendar draft. It never posts anything.</td>
+      </tr>
+      <tr>
+        <td><strong>Host access: linkedin.com</strong></td>
+        <td>Read posts and comments on pages you open, show the AI Reply UI, and — only if background profile reading is on — open hidden LinkedIn tabs to read a profile or activity page.</td>
+      </tr>
+      <tr>
+        <td><strong>Host access: localhost:11434 / localhost:11435</strong></td>
+        <td>Reach Ollama and the Claude Code bridge on your own machine.</td>
+      </tr>
+      <tr>
+        <td><strong>Host access: generativelanguage.googleapis.com, api.anthropic.com</strong></td>
+        <td>Reach Gemini or the Anthropic API when you select those backends.</td>
       </tr>
     </table>
   </section>
 
   <!-- No tracking -->
   <section>
-    <h3><span class="icon">🚫</span> What We Don't Do</h3>
+    <h3><span class="icon">🚫</span> What the Extension Does Not Do</h3>
     <ul>
-      <li>We do not track your browsing activity.</li>
-      <li>We do not use analytics or telemetry of any kind.</li>
-      <li>We do not share, sell, or rent any data to third parties.</li>
-      <li>We do not use advertising SDKs or trackers.</li>
-      <li>We do not collect crash reports or usage statistics.</li>
-      <li>We do not require account registration.</li>
+      <li>It never posts, comments, sends messages, or sends connection requests on LinkedIn.</li>
+      <li>It does not use LinkedIn's API.</li>
+      <li>It has no analytics, telemetry, crash reporting, or advertising SDKs.</li>
+      <li>It does not sell, rent, or share data with anyone other than the AI provider you select.</li>
+      <li>It does not require an account.</li>
     </ul>
   </section>
 
   <!-- Changes -->
   <section>
     <h3><span class="icon">📅</span> Changes to This Policy</h3>
-    <p>If this policy changes in a future update, the updated version will be published at this URL. The extension version and effective date will be updated below.</p>
+    <p>If this policy changes in a future update, the updated version will be published at this URL with a new effective date and extension version.</p>
     <div class="highlight" style="margin-top:1rem">
-      <strong>Effective date:</strong> 27 May 2026 &nbsp;·&nbsp; <strong>Extension version:</strong> 1.0.0
+      <strong>Effective date:</strong> 1 October 2026 &nbsp;·&nbsp; <strong>Extension version:</strong> 1.0.5
     </div>
   </section>
 
   <!-- Contact -->
   <section>
     <h3><span class="icon">✉️</span> Contact</h3>
-    <p>Questions about this privacy policy? Reach out via LinkedIn: <a href="https://www.linkedin.com/in/fineanmol" target="_blank">linkedin.com/in/fineanmol</a></p>
+    <p>Questions about this privacy policy? Reach out via LinkedIn: <a href="https://www.linkedin.com/in/fineanmol" target="_blank" rel="noopener">linkedin.com/in/fineanmol</a></p>
   </section>
 
 </div>

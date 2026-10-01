@@ -13,7 +13,7 @@ import { extractComments, extractPostContent } from './comment-extractor.js';
 import { extractFeedPosts } from './post-extractor.js';
 import { extractTopContentPosts, isTopContentPage } from './topcontent-extractor.js';
 import { extractConnections, isConnectionsPage } from './connections-extractor.js';
-import { extractProfile, extractProfilePosts, isProfilePage } from './profile-extractor.js';
+import { extractProfile, extractProfilePosts, extractProfilePostsRich, autoScrollForMorePosts, isProfilePage } from './profile-extractor.js';
 import { mountQueuePanel } from './queue-panel.js';
 import { injectReplyButton, closeAllPanels } from './ui-injector.js';
 import { findAncestorPost } from '../utils/dom-helpers.js';
@@ -52,7 +52,7 @@ async function init() {
 
     if (name) {
       chrome.runtime.sendMessage({
-        type: 'SAVE_IDENTITY',
+        type: MSG.SAVE_IDENTITY,
         payload: { name, profileUrl: profilePath },
       }).catch(() => {});
     }
@@ -178,13 +178,25 @@ function startObserver() {
 
 // ─── SPA Navigation Watcher ────────────────────────────────────────────────
 
+// Content scripts run in an ISOLATED world: patching history.pushState here
+// never sees LinkedIn's own pushState calls (they use the page world's copy).
+// So: use the Navigation API's 'navigatesuccess' event where available (it
+// fires for same-document SPA navigations from any world), plus popstate, plus
+// a cheap 1s location.href poll as a universal fallback. onNavigate() dedupes
+// on _lastUrl, so multiple signals for one navigation are harmless.
+let _navPollTimer = null;
+
 function watchNavigation() {
-  const originalPushState = history.pushState.bind(history);
-  history.pushState = (...args) => {
-    originalPushState(...args);
-    onNavigate();
-  };
-  window.addEventListener('popstate', onNavigate);
+  try {
+    if (window.navigation && typeof window.navigation.addEventListener === 'function') {
+      window.navigation.addEventListener('navigatesuccess', () => onNavigate());
+    }
+  } catch { /* Navigation API unavailable — poll below covers it */ }
+  window.addEventListener('popstate', () => onNavigate());
+  if (_navPollTimer) clearInterval(_navPollTimer);
+  _navPollTimer = setInterval(() => {
+    if (location.href !== _lastUrl) onNavigate();
+  }, 1000);
 }
 
 async function onNavigate() {
@@ -203,7 +215,7 @@ async function onNavigate() {
   const { name, profilePath } = getMyIdentityLocal();
   if (name) {
     chrome.runtime.sendMessage({
-      type: 'SAVE_IDENTITY',
+      type: MSG.SAVE_IDENTITY,
       payload: { name, profileUrl: profilePath },
     }).catch(() => {});
   }
@@ -215,7 +227,7 @@ async function onNavigate() {
 // ─── Settings Change Listener ──────────────────────────────────────────────
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === 'SETTINGS_CHANGED') {
+  if (message.type === MSG.SETTINGS_CHANGED) {
     const { enabled, debugMode } = message.payload || {};
     if (typeof enabled === 'boolean') {
       isEnabled = enabled;
@@ -277,6 +289,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ posts: [] });
     }
     return true;
+  }
+
+  // Background navigated a hidden tab to a FRIEND's /recent-activity/all/ page
+  // for content-calendar generation — scroll to load more, then scrape richly
+  // (many posts, best-effort timestamps) rather than the 3-post welcome-draft scrape.
+  if (message.type === MSG.SCRAPE_FRIEND_POSTS) {
+    (async () => {
+      try {
+        await autoScrollForMorePosts();
+        sendResponse({ posts: extractProfilePostsRich(document) });
+      } catch (e) {
+        sendResponse({ posts: [] });
+      }
+    })();
+    return true; // async response
   }
 
   // Scan the connections page for new connections → queue for welcome drafts.

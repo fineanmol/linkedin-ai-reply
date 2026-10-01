@@ -5,7 +5,7 @@
  * the style context string injected into LLM prompts.
  */
 
-import { getStyleProfile, saveStyleProfile, addStyleSample } from '../utils/storage.js';
+import { getStyleProfile, updateStyleProfile } from '../utils/storage.js';
 import logger from '../utils/logger.js';
 
 // ─── Fingerprint Extraction ─────────────────────────────────────────────────
@@ -159,29 +159,31 @@ export function buildStyleContext(profile) {
  */
 export async function learnFromApprovedReply({ text, intent }) {
   try {
-    const profile = await getStyleProfile();
+    if (!text) return;
+    // One serialized read-modify-write (dedupe + add + refingerprint) so two
+    // quick approvals can't overwrite each other's sample.
+    const total = await updateStyleProfile((profile) => {
+      // Deduplicate: skip if an existing sample starts with the same 80 chars
+      // (catches re-approving the same AI-generated reply multiple times)
+      const prefix = text.slice(0, 80).toLowerCase().replace(/\s+/g, ' ').trim();
+      const isDuplicate = profile.samples.some(s => {
+        const existingPrefix = String(s.text || '').slice(0, 80).toLowerCase().replace(/\s+/g, ' ').trim();
+        return existingPrefix === prefix;
+      });
+      if (isDuplicate) return false; // skip the write
 
-    // Deduplicate: skip if an existing sample starts with the same 80 chars
-    // (catches re-approving the same AI-generated reply multiple times)
-    const prefix = text.slice(0, 80).toLowerCase().replace(/\s+/g, ' ').trim();
-    const isDuplicate = profile.samples.some(s => {
-      const existingPrefix = s.text.slice(0, 80).toLowerCase().replace(/\s+/g, ' ').trim();
-      return existingPrefix === prefix;
+      const newSample = { id: crypto.randomUUID(), timestamp: Date.now(), text, intent, source: 'approved' };
+      profile.samples = [newSample, ...profile.samples].slice(0, profile.maxSamples);
+      // Recompute fingerprint from all samples
+      profile.fingerprint = computeFingerprint(profile.samples);
+      return profile.samples.length;
     });
 
-    if (isDuplicate) {
+    if (total === false) {
       logger.log('StyleProfiler: skipping duplicate style sample (same text already stored)');
       return;
     }
-
-    await addStyleSample({ text, intent, source: 'approved' });
-
-    // Recompute fingerprint from all samples
-    const updatedProfile = await getStyleProfile();
-    updatedProfile.fingerprint = computeFingerprint(updatedProfile.samples);
-    await saveStyleProfile(updatedProfile);
-
-    logger.log('StyleProfiler: learned from approved reply, total samples:', updatedProfile.samples.length);
+    logger.log('StyleProfiler: learned from approved reply, total samples:', total);
   } catch (e) {
     logger.error('StyleProfiler.learnFromApprovedReply failed:', e);
   }
@@ -191,28 +193,28 @@ export async function learnFromApprovedReply({ text, intent }) {
  * Save manual examples from options page and recompute fingerprint.
  */
 export async function saveManualExamples(text) {
-  const profile = await getStyleProfile();
-  profile.manualExamples = text;
+  await updateStyleProfile((profile) => {
+    profile.manualExamples = text;
 
-  // Parse manual examples as individual lines/paragraphs and add to samples
-  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 20);
-  for (const line of lines) {
-    // Only add if not already present
-    const exists = profile.samples.some(s => s.text === line && s.source === 'manual');
-    if (!exists) {
-      profile.samples.unshift({
-        id: crypto.randomUUID(),
-        text: line,
-        intent: 'general',
-        timestamp: Date.now(),
-        source: 'manual',
-      });
+    // Parse manual examples as individual lines/paragraphs and add to samples
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 20);
+    for (const line of lines) {
+      // Only add if not already present
+      const exists = profile.samples.some(s => s.text === line && s.source === 'manual');
+      if (!exists) {
+        profile.samples.unshift({
+          id: crypto.randomUUID(),
+          text: line,
+          intent: 'general',
+          timestamp: Date.now(),
+          source: 'manual',
+        });
+      }
     }
-  }
 
-  profile.samples = profile.samples.slice(0, profile.maxSamples);
-  profile.fingerprint = computeFingerprint(profile.samples);
-  await saveStyleProfile(profile);
+    profile.samples = profile.samples.slice(0, profile.maxSamples);
+    profile.fingerprint = computeFingerprint(profile.samples);
+  });
   logger.log('StyleProfiler: saved manual examples');
 }
 

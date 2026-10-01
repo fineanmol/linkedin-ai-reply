@@ -23,6 +23,30 @@ export const GEMINI_MODELS = [
 ];
 
 
+// Which settings key holds the model for each switchable backend.
+const MODEL_KEY_BY_BACKEND = {
+  ollama: 'ollamaModel',
+  gemini: 'geminiModel',
+  claude: 'claudeModel',
+};
+
+/**
+ * Keep only the non-secret fields the model switcher displays. Even though the
+ * background blanks keys for content scripts, never hold them here regardless.
+ */
+function pickSwitcherSettings(resp) {
+  const r = resp && typeof resp === 'object' ? resp : {};
+  return {
+    llmBackend: r.llmBackend,
+    ollamaModel: r.ollamaModel,
+    geminiModel: r.geminiModel,
+    claudeModel: r.claudeModel,
+    claudeMode: r.claudeMode,
+    hasGeminiKey: !!r.hasGeminiKey,
+    hasClaudeKey: !!r.hasClaudeKey,
+  };
+}
+
 // ─── Panel Component ───────────────────────────────────────────────────────
 
 export class ReplyPanel {
@@ -43,8 +67,13 @@ export class ReplyPanel {
     this.currentReply = '';
     this.backend = '';
     this.model = '';
-    this._generationActive = false;
-    // Current settings snapshot used by the model switcher
+    // Per-request generation token: each _generate() bumps it, and only the
+    // response whose token is still current gets rendered. Superseded requests
+    // (regenerate / model switch / close) are dropped silently.
+    this._genSeq = 0;
+    this._inflightSeq = 0; // token of the request currently awaiting a reply (0 = none)
+    // Settings snapshot used by the model switcher (display only — keys are
+    // never included; the background sends hasGeminiKey/hasClaudeKey instead).
     this._settings = null;
     this._ollamaModels = [];
   }
@@ -90,8 +119,8 @@ export class ReplyPanel {
         chrome.runtime.sendMessage({ type: MSG.GET_SETTINGS }),
         chrome.runtime.sendMessage({ type: MSG.GET_OLLAMA_MODELS }).catch(() => ({ models: [] })),
       ]);
-      this._settings = settingsResp || {};
-      this._ollamaModels = ollamaResp?.models || [];
+      this._settings = pickSwitcherSettings(settingsResp);
+      this._ollamaModels = Array.isArray(ollamaResp?.models) ? ollamaResp.models : [];
     } catch (e) {
       this._settings = {};
       this._ollamaModels = [];
@@ -119,7 +148,8 @@ export class ReplyPanel {
     this._bindClose();
   }
 
-  _renderReply(text, backend, model) {
+  _renderReply(text, backend, model, label, isLocal) {
+    text = String(text ?? '');
     this.currentReply = text;
     this.backend = backend;
     this.model = model;
@@ -132,7 +162,9 @@ export class ReplyPanel {
       text,
       backend,
       model,
-      wordCount
+      wordCount,
+      label,
+      isLocal
     );
 
     this._bindClose();
@@ -140,6 +172,7 @@ export class ReplyPanel {
   }
 
   _renderError(errorMsg) {
+    errorMsg = String(errorMsg || 'Unexpected error. Please try again.');
     const isOllamaError = errorMsg.toLowerCase().includes('ollama') || errorMsg.includes('localhost');
     const is403Error = isOllamaError && (errorMsg.includes('403') || errorMsg.toLowerCase().includes('forbidden') || errorMsg.toLowerCase().includes('cors'));
 
@@ -206,6 +239,11 @@ export class ReplyPanel {
         pill.classList.remove('open');
       }
     };
+    // Each re-render re-binds: drop the previous render's listener first so
+    // they don't pile up on `document` for the lifetime of the panel.
+    if (this._closeDropdownListener) {
+      document.removeEventListener('click', this._closeDropdownListener, { capture: true });
+    }
     // Use document on the shadow root's host document
     document.addEventListener('click', closeDropdown, { once: false, capture: true });
     // Cleanup when panel unmounts
@@ -219,20 +257,22 @@ export class ReplyPanel {
       const newBackend = option.dataset.backend;
       const newModel   = option.dataset.model;
 
-      // Update local settings snapshot
+      const modelKey = MODEL_KEY_BY_BACKEND[newBackend];
+      if (!modelKey || !newModel) return;
+
+      // Update local (display-only) settings snapshot
       if (!this._settings) this._settings = {};
       this._settings.llmBackend = newBackend;
-      if (newBackend === 'gemini') {
-        this._settings.geminiModel = newModel;
-      } else {
-        this._settings.ollamaModel = newModel;
-      }
+      this._settings[modelKey] = newModel;
 
-      // Persist to storage via background
+      // Persist ONLY the switched fields. The background merges partial
+      // objects; sending the whole (sanitized, possibly stale) snapshot would
+      // clobber settings changed elsewhere — and content scripts may only
+      // write { enabled, llmBackend, ollamaModel, geminiModel, claudeModel }.
       try {
         await chrome.runtime.sendMessage({
           type: MSG.SAVE_SETTINGS,
-          payload: this._settings,
+          payload: { llmBackend: newBackend, [modelKey]: newModel },
         });
         logger.log('Model switched to', newBackend, newModel);
       } catch (err) {
@@ -310,7 +350,9 @@ export class ReplyPanel {
     // Cancel any prior in-flight generation for this comment (e.g. on regenerate)
     // before starting a new one, so the old LLM call is actually aborted.
     this._cancelInflight();
-    this._generationActive = true;
+    const seq = ++this._genSeq;
+    this._inflightSeq = seq;
+    const isCurrent = () => seq === this._genSeq && this.shadowHost?.isConnected !== false;
 
     try {
       const response = await chrome.runtime.sendMessage({
@@ -325,31 +367,37 @@ export class ReplyPanel {
         },
       });
 
-      // If the panel was closed / regenerated while we awaited, drop the result.
-      if (!this._generationActive) return;
+      // Superseded (regenerated / model switched / closed) while we awaited:
+      // drop silently — incl. the "aborted" error the cancel produced.
+      if (!isCurrent()) return;
 
       if (response?.error) {
         this._renderError(response.error);
+      } else if (typeof response?.reply === 'string') {
+        this._renderReply(response.reply, response.backend, response.model, response.label, response.isLocal);
       } else {
-        this._renderReply(response.reply, response.backend, response.model);
+        this._renderError('No reply received from the background worker. Please try again.');
       }
     } catch (e) {
-      if (!this._generationActive) return;
+      if (!isCurrent()) return;
       logger.error('ReplyPanel._generate error:', e);
-      this._renderError(e.message || 'Unexpected error. Please try again.');
+      this._renderError(e?.message || 'Unexpected error. Please try again.');
     } finally {
-      this._generationActive = false;
+      // Only clear the in-flight marker if it is still OURS — a newer request
+      // may already own it.
+      if (this._inflightSeq === seq) this._inflightSeq = 0;
     }
   }
 
   /**
    * Tell the background worker to abort the in-flight LLM request for this
-   * comment, and mark the local generation inactive so a late response is
-   * ignored. Fire-and-forget — the worker no-ops if nothing is in flight.
+   * comment, and invalidate the current generation token so a late response
+   * is ignored. Fire-and-forget — the worker no-ops if nothing is in flight.
    */
   _cancelInflight() {
-    if (!this._generationActive) return;
-    this._generationActive = false;
+    if (!this._inflightSeq) return;
+    this._inflightSeq = 0;
+    this._genSeq++; // invalidate whatever is awaiting
     chrome.runtime.sendMessage({
       type: MSG.CANCEL_REPLY,
       payload: {

@@ -844,12 +844,9 @@ export function extractCommentData(commentEl) {
     if (!liarId) liarId = commentEl.dataset?.id || commentEl.id || '';
 
     if (!liarId && resolvedText) {
-      try {
-        liarId = btoa(encodeURIComponent(resolvedText.slice(0, 60)))
-          .replace(/[^a-zA-Z0-9]/g, '').slice(0, 20);
-      } catch {
-        liarId = `comment-${Math.random().toString(36).slice(2, 9)}`;
-      }
+      // Stable content hash over the FULL text + author (the old base64 slice
+      // only reflected ~11 chars, so similar comments collided on one id).
+      liarId = `comment-h${fnv1a32(`${authorName}\u0000${resolvedText}`)}`;
     }
 
     if (!liarId) {
@@ -860,6 +857,22 @@ export function extractCommentData(commentEl) {
   }
 
   return { element: commentEl, text: resolvedText, authorName, timestamp, id: liarId };
+}
+
+/**
+ * 32-bit FNV-1a hash of a string (UTF-16 code units), as 8 hex chars.
+ * Deterministic and dependency-free — used for fallback comment ids.
+ * @param {string} str
+ * @returns {string}
+ */
+export function fnv1a32(str) {
+  let h = 0x811c9dc5;
+  const s = String(str ?? '');
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16).padStart(8, '0');
 }
 
 // ─── Closest Post ─────────────────────────────────────────────────────────

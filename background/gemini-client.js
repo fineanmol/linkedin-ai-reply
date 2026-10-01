@@ -7,6 +7,22 @@
 import logger from '../utils/logger.js';
 
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
+const ATTEMPT_TIMEOUT_MS = 60_000; // per HTTP attempt (we retry transient errors)
+
+/** Combine the caller's signal (may be undefined) with a hard timeout. */
+function withTimeout(signal, ms) {
+  const timeout = AbortSignal.timeout(ms);
+  if (!signal) return timeout;
+  if (typeof AbortSignal.any === 'function') return AbortSignal.any([signal, timeout]);
+  // Chrome < 116 has no AbortSignal.any — combine by hand.
+  const ctrl = new AbortController();
+  const relay = (s) => () => ctrl.abort(s.reason);
+  for (const s of [signal, timeout]) {
+    if (s.aborted) { ctrl.abort(s.reason); break; }
+    s.addEventListener('abort', relay(s), { once: true });
+  }
+  return ctrl.signal;
+}
 
 export class GeminiClient {
   constructor(apiKey, model = 'gemini-flash-latest') {
@@ -23,7 +39,9 @@ export class GeminiClient {
   async chat({ messages, temperature = 0.7, signal }) {
     if (!this.apiKey) throw new Error('Gemini API key not configured.');
 
-    const url = `${GEMINI_BASE}/models/${this.model}:generateContent?key=${this.apiKey}`;
+    // Key goes in the x-goog-api-key header, never the URL (URLs end up in
+    // logs, devtools network panels and error messages).
+    const url = `${GEMINI_BASE}/models/${this.model}:generateContent`;
 
     // Convert our message format to Gemini's format
     // System message goes as first user turn if present
@@ -69,9 +87,9 @@ export class GeminiClient {
 
     const doFetch = (payload) => fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': this.apiKey },
       body: JSON.stringify(payload),
-      signal: signal || AbortSignal.timeout(60_000),
+      signal: withTimeout(signal, ATTEMPT_TIMEOUT_MS),
     });
 
     // Transient server errors (overload / rate-limit) are common and usually
@@ -87,6 +105,7 @@ export class GeminiClient {
         const wait = 800 * Math.pow(2, attempt); // 0.8s, 1.6s, 3.2s
         logger.warn(`GeminiClient: ${res.status} transient — retrying in ${wait}ms (attempt ${attempt + 1}/3)`);
         await sleep(wait);
+        signal?.throwIfAborted(); // user cancelled during backoff
       }
     }
 
@@ -97,7 +116,7 @@ export class GeminiClient {
     // succeeds, the offending field was optional; if it still 400s, surface it.
     if (res.status === 400) {
       const errText = await res.clone().text().catch(() => '');
-      logger.warn('GeminiClient: 400 — retrying with a minimal request. Detail:', errText.slice(0, 200));
+      logger.warn('GeminiClient: 400 — retrying with a minimal request. Detail:', this._redact(errText.slice(0, 200)));
       const minimal = {
         contents: body.contents,
         generationConfig: { temperature, maxOutputTokens: 2048 },
@@ -108,7 +127,8 @@ export class GeminiClient {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: { message: res.statusText } }));
-      const msg = err.error?.message || 'Unknown';
+      // Scrub the key in case the API ever echoes it back.
+      const msg = this._redact(err.error?.message || 'Unknown');
       // Make the common cases actionable.
       if (res.status === 404) {
         throw new Error(`Model "${this.model}" unavailable (404). Pick another Gemini model in Settings. (${msg})`);
@@ -126,5 +146,11 @@ export class GeminiClient {
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!text) throw new Error('Gemini returned empty response');
     return text.trim();
+  }
+
+  /** Remove the API key from any text that might be logged or shown. */
+  _redact(text) {
+    const str = String(text ?? '');
+    return this.apiKey ? str.split(this.apiKey).join('[redacted]') : str;
   }
 }

@@ -6,7 +6,7 @@
 
 import * as icons from './icons.js';
 import { GEMINI_MODELS } from '../reply-panel.js'; // relative to content/ui/
-import { OLLAMA_MODELS } from '../../utils/constants.js';
+import { OLLAMA_MODELS, CLAUDE_MODELS, BACKENDS } from '../../utils/constants.js';
 
 // Intent styling mapping using brand colors and clean SVGs
 export const INTENT_BRAND_MAP = {
@@ -54,12 +54,37 @@ export const INTENT_BRAND_MAP = {
   },
 };
 
-function escapeHTML(str) {
-  return String(str)
+export function escapeHTML(str) {
+  return String(str ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** The model id currently selected for a backend in the settings snapshot. */
+function activeModelFor(backend, s) {
+  if (backend === 'ollama') return s.ollamaModel || 'gemma2:2b';
+  if (backend === 'gemini') return s.geminiModel || 'gemini-flash-latest';
+  if (backend === 'claude') return s.claudeModel || 'claude-opus-5-5';
+  return ''; // 'auto' — resolved by the background at request time
+}
+
+/** Short human label for the pill. Returns PLAIN text (caller escapes). */
+function shortModelLabel(backend, model) {
+  if (backend === 'auto') return 'Auto';
+  if (backend === 'claude') {
+    const known = CLAUDE_MODELS.find(m => m.id === model);
+    return known ? known.label.split('—')[0].trim() : (model || 'Claude');
+  }
+  if (backend === 'gemini') {
+    return String(model || '')
+      .replace('gemini-', 'Gemini ')
+      .replace('-flash', ' Flash')
+      .replace('-pro', ' Pro');
+  }
+  return String(model || '');
 }
 
 /**
@@ -68,15 +93,17 @@ function escapeHTML(str) {
 export function headerHTML(intent, settings, ollamaModels) {
   const currentIntent = INTENT_BRAND_MAP[intent] || INTENT_BRAND_MAP.general;
   const s = settings || {};
-  const backend = s.llmBackend || 'gemini';
-  const activeModel = backend === 'ollama'
-    ? (s.ollamaModel || 'gemma2:2b')
-    : (s.geminiModel || 'gemini-flash-latest');
-
-  const shortLabel = activeModel
-    .replace('gemini-', 'Gemini ')
-    .replace('-flash', ' Flash')
-    .replace('-pro', ' Pro');
+  const backend = s.llmBackend || 'ollama';
+  const activeModel = activeModelFor(backend, s);
+  const shortLabel = shortModelLabel(backend, activeModel);
+  // Truthful locality marker: only Ollama runs on this machine. 'auto' may
+  // fall back to the cloud, so it is never marked local.
+  const pillIcon = backend === 'ollama' ? '🏠' : backend === 'auto' ? '⇄' : '☁️';
+  const pillTitle = backend === 'ollama'
+    ? 'Switch model — currently Local (Ollama)'
+    : backend === 'auto'
+      ? 'Switch model — currently Auto (Ollama if running, else Gemini cloud)'
+      : `Switch model — currently Cloud (${(BACKENDS[backend] || {}).label || backend})`;
 
   // Badge dynamic style
   const badgeStyle = `background: ${currentIntent.bg}; color: ${currentIntent.color}; border: 1px solid ${currentIntent.color}33;`;
@@ -98,11 +125,11 @@ export function headerHTML(intent, settings, ollamaModels) {
         <span style="margin-left: 4px;">${currentIntent.label}</span>
       </span>
       <div class="model-switcher" id="liar-model-switcher">
-        <div class="model-pill" id="liar-model-pill" title="Switch model">
+        <div class="model-pill" id="liar-model-pill" title="${escapeHTML(pillTitle)}">
           <span style="margin-right: 4px; display: flex; align-items: center; color: var(--sky-blue);">
-            ${backend === 'ollama' ? '🏠' : '☁️'}
+            ${pillIcon}
           </span>
-          <span>${shortLabel}</span>
+          <span>${escapeHTML(shortLabel)}</span>
           <span style="margin-left: 6px; display: flex; align-items: center;">${icons.CARET_ICON}</span>
         </div>
         <div class="model-dropdown" id="liar-model-dropdown">
@@ -118,35 +145,45 @@ export function headerHTML(intent, settings, ollamaModels) {
 
 /**
  * Renders the options inside the model selection dropdown list.
+ * Every interpolated id/label is escaped: Ollama model names come from
+ * whatever is listening on localhost and are untrusted.
  */
-function modelDropdownHTML(backend, activeModel, ollamaModels) {
-  const geminiItems = GEMINI_MODELS.map(m => `
-    <div class="model-option ${backend === 'gemini' && activeModel === m.id ? 'active' : ''}"
-         data-backend="gemini" data-model="${m.id}">
-      <span class="model-icon">☁️</span>
-      <span>${m.label}</span>
-      ${backend === 'gemini' && activeModel === m.id ? '<span class="model-check">✓</span>' : ''}
+function modelOptionHTML(backend, activeModel, optBackend, id, label, icon) {
+  const active = backend === optBackend && activeModel === id;
+  return `
+    <div class="model-option ${active ? 'active' : ''}"
+         data-backend="${escapeHTML(optBackend)}" data-model="${escapeHTML(id)}">
+      <span class="model-icon">${icon}</span>
+      <span>${escapeHTML(label)}</span>
+      ${active ? '<span class="model-check">✓</span>' : ''}
     </div>
-  `).join('');
+  `;
+}
+
+function modelDropdownHTML(backend, activeModel, ollamaModels) {
+  const geminiItems = GEMINI_MODELS
+    .map(m => modelOptionHTML(backend, activeModel, 'gemini', m.id, m.label, '☁️'))
+    .join('');
+
+  const claudeItems = CLAUDE_MODELS
+    .map(m => modelOptionHTML(backend, activeModel, 'claude', m.id, m.label, '☁️'))
+    .join('');
 
   const ollamaItems = ollamaModels && ollamaModels.length > 0
-    ? ollamaModels.map(id => {
+    ? ollamaModels.map(rawId => {
+        const id = String(rawId ?? '');
         const known = OLLAMA_MODELS.find(m => m.id === id);
         const label = known ? known.label.split('—')[0].trim() : id;
-        return `
-          <div class="model-option ${backend === 'ollama' && activeModel === id ? 'active' : ''}"
-               data-backend="ollama" data-model="${id}">
-            <span class="model-icon">🏠</span>
-            <span>${label}</span>
-            ${backend === 'ollama' && activeModel === id ? '<span class="model-check">✓</span>' : ''}
-          </div>
-        `;
+        return modelOptionHTML(backend, activeModel, 'ollama', id, label, '🏠');
       }).join('')
     : `<div class="model-option" style="opacity:0.4;cursor:default"><span class="model-icon">🏠</span>No local models found</div>`;
 
   return `
-    <div class="model-section-label">Cloud Models</div>
+    <div class="model-section-label">Cloud · Gemini</div>
     ${geminiItems}
+    <div class="model-divider"></div>
+    <div class="model-section-label">Cloud · Claude</div>
+    ${claudeItems}
     <div class="model-divider"></div>
     <div class="model-section-label">Local Models (Ollama)</div>
     ${ollamaItems}
@@ -169,16 +206,24 @@ export function loadingHTML(intent, settings, ollamaModels) {
 /**
  * Generated reply view template.
  */
-export function replyHTML(intent, settings, ollamaModels, text, backend, model, wordCount) {
+export function replyHTML(intent, settings, ollamaModels, text, backend, model, wordCount, label = '', isLocal) {
+  // Truthful backend badge (contract): 'Local Model' only when the response
+  // says the backend is local; everything else is marked Cloud.
+  const known = BACKENDS[backend] || {};
+  const local = typeof isLocal === 'boolean' ? isLocal : known.isLocal === true;
+  const backendLabel = label || known.label || backend || 'Unknown';
+  const badgeText = local
+    ? `Local Model &middot; ${escapeHTML(model)}`
+    : `Cloud &middot; ${escapeHTML(backendLabel)}${model ? ` &middot; ${escapeHTML(model)}` : ''}`;
   return `
     ${headerHTML(intent, settings, ollamaModels)}
     <textarea class="reply-textarea" id="liar-textarea" spellcheck="true" placeholder="AI suggestion draft...">${escapeHTML(text)}</textarea>
     <div class="meta-row">
       <span class="backend-badge">
         <span class="dot"></span>
-        ${backend === 'ollama' ? `Local Model &middot; ${model}` : `Cloud API &middot; ${model}`}
+        ${badgeText}
       </span>
-      <span class="word-count" id="liar-word-count">${wordCount} words</span>
+      <span class="word-count" id="liar-word-count">${Number(wordCount) || 0} words</span>
     </div>
     <div class="actions">
       <button class="btn btn-approve" id="liar-approve">

@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      # The *.bundle.js files are committed (Chrome can load the repo root
+      # directly), so they must match the sources.
+      - name: Check committed bundles are fresh
+        run: |
+          if ! git diff --exit-code --stat -- '*.bundle.js'; then
+            echo "::error::Committed *.bundle.js files are stale. Run 'npm run build' and commit the result."
+            exit 1
+          fi
+
+      - name: Test
+        run: npm test

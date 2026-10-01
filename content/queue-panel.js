@@ -198,7 +198,19 @@ export class QueuePanel {
   constructor() { this.host = null; this.shadow = null; }
 
   ensureLauncher() {
-    if (document.getElementById(HOST_ID)) return;
+    // Already mounted and still in the page → nothing to do.
+    if (this.host && this.host.isConnected) return;
+    // LinkedIn's SPA re-render can detach our host: re-attach the SAME host
+    // (keeps its shadow root + state) instead of building a second one.
+    if (this.host && document.body) {
+      document.getElementById(HOST_ID)?.remove();
+      document.body.appendChild(this.host);
+      this.renderLauncher();
+      return;
+    }
+    // A host from a previous content-script instance (e.g. extension reload)
+    // can't be driven by this one — replace it.
+    document.getElementById(HOST_ID)?.remove();
     this.host = document.createElement('div');
     this.host.id = HOST_ID;
     this.shadow = this.host.attachShadow({ mode: 'open' });
@@ -218,7 +230,7 @@ export class QueuePanel {
     this.root.innerHTML = `
       <button class="launcher" id="q-launch" title="LinkedIn Assistant">
         ${LOGO(20, '#5cc3e8', '#08161d')} <span>Assistant</span>
-        <span class="badge ${pending ? '' : 'zero'}">${pending}</span>
+        <span class="badge ${pending ? '' : 'zero'}">${Number(pending) || 0}</span>
       </button>`;
     this.root.querySelector('#q-launch').onclick = () => { _open = true; this.renderLauncher(); };
   }
@@ -264,7 +276,7 @@ export class QueuePanel {
       const rel = q.relevance != null ? `${Math.round(q.relevance * 100)}%` : '';
       const st = q.status === 'done' ? 'done' : q.status === 'copied' ? 'copied' : 'new';
       return `
-      <div class="row st-${st}" data-id="${q.id}">
+      <div class="row st-${st}" data-id="${esc(q.id)}">
         <div class="meta">
           <span class="who">${esc(q.authorName || 'Someone')}</span>
           ${rel ? `<span class="pill match">${rel} match</span>` : ''}
@@ -272,12 +284,12 @@ export class QueuePanel {
         </div>
         <p class="snip">${esc((q.postText || '').slice(0, 150))}${(q.postText || '').length > 150 ? '…' : ''}</p>
         ${q.whyEngage ? `<p class="why">Why engage: ${esc(q.whyEngage)}</p>` : ''}
-        <textarea class="draft" data-id="${q.id}" placeholder="Click Draft to write a comment in your voice…">${esc(q.draftReply || '')}</textarea>
+        <textarea class="draft" data-id="${esc(q.id)}" placeholder="Click Draft to write a comment in your voice…">${esc(q.draftReply || '')}</textarea>
         <div class="acts">
-          <button class="btn btn-ghost sm q-draft" data-id="${q.id}">${q.draftReply ? 'Redraft' : 'Draft'}</button>
-          <button class="btn btn-primary sm q-go" data-id="${q.id}">Copy &amp; go to post</button>
-          <button class="btn btn-ghost sm q-posted" data-id="${q.id}" ${st === 'done' ? 'disabled' : ''}>Mark posted</button>
-          <button class="btn btn-quiet sm q-skip" data-id="${q.id}">Skip</button>
+          <button class="btn btn-ghost sm q-draft" data-id="${esc(q.id)}">${q.draftReply ? 'Redraft' : 'Draft'}</button>
+          <button class="btn btn-primary sm q-go" data-id="${esc(q.id)}">Copy &amp; go to post</button>
+          <button class="btn btn-ghost sm q-posted" data-id="${esc(q.id)}" ${st === 'done' ? 'disabled' : ''}>Mark posted</button>
+          <button class="btn btn-quiet sm q-skip" data-id="${esc(q.id)}">Skip</button>
         </div>
       </div>`;
     }).join('');
@@ -286,7 +298,7 @@ export class QueuePanel {
         <button class="btn btn-primary" id="q-build">Build from this page</button>
         <button class="btn btn-ghost" id="q-draftall">Draft all</button>
         <span class="spacer"></span>
-        <span class="pill date" title="Comments you've posted">${counts.today} today · ${counts.week} wk</span>
+        <span class="pill date" title="Comments you've posted">${esc(counts.today ?? 0)} today · ${esc(counts.week ?? 0)} wk</span>
       </div>
       <div class="status" id="q-status">Draft → Copy &amp; go to post → paste, post, then Mark posted.</div>
       <div class="list">${rows || '<div class="empty"><div class="big">💬</div>No comments queued yet.<br>Open your feed or a trending page, then hit <b>Build from this page</b>.</div>'}</div>`;
@@ -310,19 +322,19 @@ export class QueuePanel {
     const rows = items.map(c => {
       const st = c.status === 'done' ? 'done' : c.status === 'copied' ? 'copied' : 'new';
       return `
-      <div class="row st-${st}" data-id="${c.id}">
+      <div class="row st-${st}" data-id="${esc(c.id)}">
         <div class="meta">
           <span class="who">${esc(c.name || 'there')}</span>
           ${c.connectedOn ? `<span class="pill date">${esc(c.connectedOn)}</span>` : ''}
           ${st === 'done' ? '<span class="pill done">✓ sent</span>' : st === 'copied' ? '<span class="pill copied">copied</span>' : ''}
         </div>
         ${c.headline ? `<p class="snip head">${esc(c.headline.slice(0, 120))}</p>` : ''}
-        <textarea class="cdraft" data-id="${c.id}" placeholder="Click Draft — reads their profile + recent posts…">${esc(c.draftMessage || '')}</textarea>
+        <textarea class="cdraft" data-id="${esc(c.id)}" placeholder="Click Draft — reads their profile + recent posts…">${esc(c.draftMessage || '')}</textarea>
         <div class="acts">
-          <button class="btn btn-ghost sm c-draft" data-id="${c.id}">${c.draftMessage ? 'Redraft' : 'Draft'}</button>
-          <button class="btn btn-primary sm c-go" data-id="${c.id}" data-path="${esc(c.profilePath || '')}">Copy &amp; open chat</button>
-          <button class="btn btn-ghost sm c-sent" data-id="${c.id}" ${st === 'done' ? 'disabled' : ''}>Mark sent</button>
-          <button class="btn btn-quiet sm c-skip" data-id="${c.id}">Skip</button>
+          <button class="btn btn-ghost sm c-draft" data-id="${esc(c.id)}">${c.draftMessage ? 'Redraft' : 'Draft'}</button>
+          <button class="btn btn-primary sm c-go" data-id="${esc(c.id)}" data-path="${esc(c.profilePath || '')}">Copy &amp; open chat</button>
+          <button class="btn btn-ghost sm c-sent" data-id="${esc(c.id)}" ${st === 'done' ? 'disabled' : ''}>Mark sent</button>
+          <button class="btn btn-quiet sm c-skip" data-id="${esc(c.id)}">Skip</button>
         </div>
       </div>`;
     }).join('');
@@ -361,24 +373,46 @@ export class QueuePanel {
     const { connections = [] } = await send(MSG.GET_CONNECTIONS);
     const c = connections.find(x => x.id === id);
     if (!c) return;
-    const ta = this.root.querySelector(`.cdraft[data-id="${id}"]`);
+    const ta = this.root.querySelector(`.cdraft[data-id="${cssEsc(id)}"]`);
     if (ta) ta.value = 'Reading their profile & recent posts…';
     this.status('Opening their profile to personalize (a few seconds)…');
     // DEEP draft: background opens their profile, reads About + recent posts,
     // drafts from that, closes the tab. Per-click only.
-    const gen = await send(MSG.DEEP_DRAFT_WELCOME, {
+    let gen = await send(MSG.DEEP_DRAFT_WELCOME, {
       profilePath: c.profilePath, name: c.name, headline: c.headline,
     });
-    const msg = gen?.message || `(couldn't generate: ${gen?.error || 'unknown'})`;
+    // Background profile reading is off (the default): fall back to a light
+    // draft from the name + headline we already scanned — no tabs opened.
+    if (gen?.code === 'SCRAPING_DISABLED') {
+      if (ta) ta.value = 'Drafting from their name + headline…';
+      const light = await send(MSG.DRAFT_WELCOME, { name: c.name, headline: c.headline });
+      if (light?.message) {
+        gen = { message: light.message, deep: false, light: true };
+      } else if (light?.error) {
+        gen = { error: light.error };
+      }
+    }
+    // Failure (incl. { code: 'SCRAPING_DISABLED' }): show the reason in the
+    // status line and leave the draft EMPTY — never persist error text as a
+    // draft (it would get copied into a real message).
+    if (!gen?.message) {
+      if (ta) ta.value = c.draftMessage || '';
+      const why = gen?.error || 'unknown error';
+      this.status(gen?.code === 'SCRAPING_DISABLED' ? why : `Couldn't draft for ${c.name || 'them'}: ${why}`);
+      return;
+    }
+    const msg = gen.message;
     if (ta) ta.value = msg;
     await send(MSG.UPDATE_CONNECTION, { id, patch: { draftMessage: msg } });
-    this.status(gen?.deep ? 'Drafted from their profile + posts ✓' : 'Drafted (limited profile info) ✓');
+    this.status(gen?.deep ? 'Drafted from their profile + posts ✓'
+      : gen?.light ? 'Drafted from name + headline ✓ (deeper drafts: Settings → Advanced)'
+      : 'Drafted (limited profile info) ✓');
   }
 
   async openChat(id, profilePath) {
     const { connections = [] } = await send(MSG.GET_CONNECTIONS);
     const c = connections.find(x => x.id === id);
-    const ta = this.root.querySelector(`.cdraft[data-id="${id}"]`);
+    const ta = this.root.querySelector(`.cdraft[data-id="${cssEsc(id)}"]`);
     const msg = (ta?.value || c?.draftMessage || '').trim();
     if (msg) {
       const ok = await copyToClipboard(msg);
@@ -421,40 +455,56 @@ export class QueuePanel {
     const { queue = [] } = await send(MSG.GET_QUEUE);
     const item = queue.find(q => q.id === id);
     if (!item) return;
-    const ta = this.root.querySelector(`.draft[data-id="${id}"]`);
+    const ta = this.root.querySelector(`.draft[data-id="${cssEsc(id)}"]`);
     if (ta) ta.value = 'Generating…';
     const gen = await send(MSG.GENERATE_REPLY, {
       commentId: `queue-${id}`, commentText: item.postText, authorName: item.authorName,
       postContent: item.postText, intent: 'post_comment', forceRegenerate: !!item.draftReply,
     });
-    const text = gen?.reply || `(couldn't generate: ${gen?.error || 'unknown'})`;
+    // On failure: report in the status line, keep the previous draft (or
+    // empty) — error text must never become a draft "Copy & go" could copy.
+    if (!gen?.reply) {
+      if (ta) ta.value = item.draftReply || '';
+      this.status(`Couldn't draft for ${item.authorName || 'this post'}: ${gen?.error || 'unknown error'}`);
+      return;
+    }
+    const text = gen.reply;
     if (ta) ta.value = text;
     await send(MSG.UPDATE_QUEUE_ITEM, { id, patch: { draftReply: text } });
+    this.status(gen.label ? `Drafted with ${gen.label}${gen.isLocal ? '' : ' (cloud)'} ✓` : 'Drafted ✓');
   }
 
   async draftAll() {
     const { queue = [] } = await send(MSG.GET_QUEUE);
     const pending = queue.filter(q => q.status !== 'skipped' && !q.draftReply);
     if (!pending.length) { this.status('All items already drafted.'); return; }
-    let n = 0;
+    let n = 0, ok = 0, lastError = '';
     for (const item of pending) {
       this.status(`Drafting ${n + 1} of ${pending.length}…`);
       const gen = await send(MSG.GENERATE_REPLY, {
         commentId: `queue-${item.id}`, commentText: item.postText, authorName: item.authorName,
         postContent: item.postText, intent: 'post_comment',
       });
-      if (gen?.reply) await send(MSG.UPDATE_QUEUE_ITEM, { id: item.id, patch: { draftReply: gen.reply } });
+      if (gen?.reply) {
+        await send(MSG.UPDATE_QUEUE_ITEM, { id: item.id, patch: { draftReply: gen.reply } });
+        ok++;
+      } else {
+        lastError = gen?.error || 'unknown error';
+      }
       n++;
     }
-    this.status(`Drafted ${n}. Review, then Copy & go to each post.`);
-    this.renderPanel();
+    // renderPanel() rebuilds the status line, so set the summary after it.
+    await this.renderPanel();
+    this.status(ok === n
+      ? `Drafted ${ok}. Review, then Copy & go to each post.`
+      : `Drafted ${ok} of ${n}. ${n - ok} failed (${lastError}) — hit Draft all to retry.`);
   }
 
   async goToPost(id) {
     const { queue = [] } = await send(MSG.GET_QUEUE);
     const item = queue.find(q => q.id === id);
     if (!item) return;
-    const ta = this.root.querySelector(`.draft[data-id="${id}"]`);
+    const ta = this.root.querySelector(`.draft[data-id="${cssEsc(id)}"]`);
     const text = (ta?.value || item.draftReply || '').trim();
     if (text) {
       const ok = await copyToClipboard(text);
@@ -485,7 +535,7 @@ export class QueuePanel {
     const { queue = [] } = await send(MSG.GET_QUEUE);
     const item = queue.find(q => q.id === id);
     if (!item) return;
-    const ta = this.root.querySelector(`.draft[data-id="${id}"]`);
+    const ta = this.root.querySelector(`.draft[data-id="${cssEsc(id)}"]`);
     const comment = (ta?.value || item.draftReply || '').trim();
     const resp = await send(MSG.LOG_COMMENT, {
       urn: item.urn, authorName: item.authorName, postText: item.postText, comment,
@@ -503,16 +553,25 @@ export class QueuePanel {
 }
 
 function esc(s) {
-  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+/** Escape a value for use inside a CSS attribute selector string. */
+function cssEsc(s) {
+  const v = String(s ?? '');
+  // NB: this module's own `CSS` const (the stylesheet) shadows the global.
+  const cssApi = globalThis.CSS;
+  return (cssApi && typeof cssApi.escape === 'function') ? cssApi.escape(v) : v.replace(/["\\]/g, '\\$&');
 }
 
 let _panel = null;
 export function mountQueuePanel() {
-  if (_panel) return _panel;
+  // Re-ensure on EVERY call: LinkedIn's SPA navigation can remove our host
+  // from the DOM, and callers (init, onNavigate) rely on this to restore it.
   try {
-    _panel = new QueuePanel();
+    if (!_panel) _panel = new QueuePanel();
     _panel.ensureLauncher();
-    logger.log('QueuePanel: launcher mounted');
+    logger.log('QueuePanel: launcher ensured');
   } catch (e) {
     console.warn('[LIAR] QueuePanel mount failed:', e);
   }

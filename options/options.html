@@ -31,6 +31,7 @@
         <li><a href="#llm" class="nav-link" data-tab="llm">🤖 LLM Backend</a></li>
         <li><a href="#style" class="nav-link" data-tab="style">✍️ Style Profile</a></li>
         <li><a href="#history" class="nav-link" data-tab="history">📋 Reply History</a></li>
+        <li><a href="#calendar" class="nav-link" data-tab="calendar">🗓️ Content Calendar</a></li>
         <li><a href="#advanced" class="nav-link" data-tab="advanced">⚙️ Advanced</a></li>
       </ul>
 
@@ -116,7 +117,7 @@
           <button class="btn-danger-sm" id="clear-comments">Clear Log</button>
         </div>
         <div class="history-list" id="comments-list">
-          <div class="empty-state">No comments logged yet. Post from the on-page queue and tap “I posted this”.</div>
+          <div class="empty-state">No comments logged yet. After posting a queued comment on LinkedIn, click “Mark posted” here or “I posted this” in the on-page panel.</div>
         </div>
       </section>
 
@@ -124,7 +125,7 @@
       <section class="tab-pane" id="tab-llm">
         <div class="tab-header">
           <h1>LLM Backend</h1>
-          <p class="tab-desc">Configure your AI model. All local inference stays on your device — nothing is sent externally unless you enable the Gemini fallback.</p>
+          <p class="tab-desc">Configure your AI model. With <b>Ollama</b> everything stays on your machine. <b>Gemini</b> and <b>Claude</b> are cloud backends: post and comment text is sent to Google or Anthropic to generate drafts.</p>
         </div>
 
         <div class="card">
@@ -133,22 +134,29 @@
             <label class="radio-option" id="radio-ollama-label">
               <input type="radio" name="llmBackend" value="ollama" id="radio-ollama">
               <div class="radio-content">
-                <div class="radio-title">🏠 Ollama (Local) <span class="badge badge-recommended">Recommended</span></div>
+                <div class="radio-title">🏠 Ollama <span class="badge badge-local">Local</span> <span class="badge badge-recommended">Recommended</span></div>
                 <div class="radio-desc">Free, private, runs entirely on your machine. Requires Ollama to be installed and running.</div>
               </div>
             </label>
             <label class="radio-option" id="radio-gemini-label">
               <input type="radio" name="llmBackend" value="gemini" id="radio-gemini">
               <div class="radio-content">
-                <div class="radio-title">☁️ Gemini API (Cloud)</div>
+                <div class="radio-title">☁️ Gemini API <span class="badge badge-cloud">Cloud</span></div>
                 <div class="radio-desc">Uses Google Gemini with your own API key. Faster, no local install needed. Your data leaves your device.</div>
+              </div>
+            </label>
+            <label class="radio-option" id="radio-claude-label">
+              <input type="radio" name="llmBackend" value="claude" id="radio-claude">
+              <div class="radio-content">
+                <div class="radio-title">✳️ Claude <span class="badge badge-cloud">Cloud</span></div>
+                <div class="radio-desc">Anthropic Claude via the local Claude Code bridge (uses your Claude Code login) or your own Anthropic API key. Your data leaves your device.</div>
               </div>
             </label>
             <label class="radio-option" id="radio-auto-label">
               <input type="radio" name="llmBackend" value="auto" id="radio-auto">
               <div class="radio-content">
-                <div class="radio-title">🔀 Auto (Ollama → Gemini fallback)</div>
-                <div class="radio-desc">Tries Ollama first; falls back to Gemini if unavailable.</div>
+                <div class="radio-title">🔀 Auto (Ollama → Gemini fallback) <span class="badge badge-cloud">Cloud fallback</span></div>
+                <div class="radio-desc">Tries Ollama first; falls back to Gemini (cloud) if Ollama is unavailable.</div>
               </div>
             </label>
           </div>
@@ -207,17 +215,72 @@
           </div>
         </div>
 
+        <!-- Claude Config -->
+        <div class="card" id="claude-config" hidden>
+          <div class="card-title">Claude Configuration</div>
+
+          <div class="form-group">
+            <span class="form-label">Connection</span>
+            <div class="segmented" role="radiogroup" aria-label="Claude connection mode">
+              <label class="segmented-option">
+                <input type="radio" name="claudeMode" value="bridge" id="claude-mode-bridge">
+                <span>Claude Code bridge</span>
+              </label>
+              <label class="segmented-option">
+                <input type="radio" name="claudeMode" value="api" id="claude-mode-api">
+                <span>Anthropic API key</span>
+              </label>
+            </div>
+          </div>
+
+          <div id="claude-bridge-fields">
+            <div class="form-group">
+              <label class="form-label" for="claude-bridge-url">Bridge URL</label>
+              <input class="form-input" type="url" id="claude-bridge-url" value="http://localhost:11435" placeholder="http://localhost:11435">
+              <div class="form-hint">Start the bridge with: <code>npm run bridge</code> (runs on port 11435 and uses your Claude Code login).</div>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="claude-bridge-token">Bridge token (optional)</label>
+              <input class="form-input" type="password" id="claude-bridge-token" placeholder="Only if you started the bridge with BRIDGE_TOKEN" autocomplete="off">
+              <div class="form-hint">Must match the <code>BRIDGE_TOKEN</code> environment variable the bridge was started with.</div>
+            </div>
+          </div>
+
+          <div id="claude-api-fields" hidden>
+            <div class="form-group">
+              <label class="form-label" for="claude-api-key">Anthropic API Key</label>
+              <input class="form-input" type="password" id="claude-api-key" placeholder="sk-ant-…" autocomplete="off">
+              <div class="form-hint">Create a key in the <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Anthropic Console</a>. Stored only in this browser's extension storage.</div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="claude-model">Model</label>
+            <select class="form-input form-select" id="claude-model"></select>
+          </div>
+
+          <div class="cloud-note">☁️ Sends post/comment text to Anthropic (cloud).</div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Connection Test</div>
+          <p class="card-desc">Checks the backend selected above (save first if you changed it).</p>
+          <button class="btn-save" id="test-backend" type="button">Test connection</button>
+          <div class="form-hint" id="test-backend-result" style="margin-top:10px;"></div>
+        </div>
+
         <!-- Generation settings -->
         <div class="card">
           <div class="card-title">Generation Settings</div>
           <div class="form-group">
-            <label class="form-label" for="max-length">Max Reply Length: <span id="max-length-val">150</span> words</label>
-            <input type="range" class="form-range" id="max-length" min="30" max="300" step="10" value="150">
+            <label class="form-label" for="max-length">Max Reply Length: <span id="max-length-val">45</span> words</label>
+            <input type="range" class="form-range" id="max-length" min="15" max="45" step="5" value="45">
+            <div class="form-hint">Replies are kept deliberately short — the prompt hard-caps them at 45 words.</div>
           </div>
           <div class="form-group">
-            <label class="form-label" for="temperature">Creativity (Temperature): <span id="temp-val">0.7</span></label>
-            <input type="range" class="form-range" id="temperature" min="0.1" max="1.0" step="0.1" value="0.7">
-            <div class="form-hint">Lower = more consistent. Higher = more creative.</div>
+            <label class="form-label" for="temperature">Creativity (Temperature): <span id="temp-val">0.85</span></label>
+            <input type="range" class="form-range" id="temperature" min="0.1" max="1.0" step="0.05" value="0.85">
+            <div class="form-hint">Lower = more consistent. Higher = more creative. Ignored for Claude (those models don't accept a temperature).</div>
           </div>
         </div>
 
@@ -287,6 +350,76 @@ Appreciate you sharing this. One thing I'd add is that the human factor is often
         </div>
       </section>
 
+      <!-- ── Content Calendar Tab ────────────────────────────────────────── -->
+      <section class="tab-pane" id="tab-calendar">
+        <div class="tab-header">
+          <h1>Content Calendar</h1>
+          <p class="tab-desc">Generate a month of post drafts blended from a friend's post history (adapted into your own voice — never copied) and original posts based on durable content patterns. Everything here is a draft — you review, edit, and post it yourself on LinkedIn on its scheduled day. Nothing is ever posted automatically.</p>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Generate a Calendar</div>
+          <div class="form-group">
+            <label class="form-label" for="cal-friend-url">Friend's profile URL (they've agreed to share content ideas with you)</label>
+            <input class="form-input" type="text" id="cal-friend-url" placeholder="https://www.linkedin.com/in/your-friend/ or /in/your-friend">
+            <div class="form-hint">We'll read their public recent posts (oldest to newest) to seed your "friend-derived" days — always rewritten in your own voice, never copy-pasted.</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="cal-ratio-friend">Friend-derived vs Trending mix: <span id="cal-ratio-label">70% friend / 30% trending</span></label>
+            <input type="range" class="form-range" id="cal-ratio-friend" min="0" max="100" step="5" value="70">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="cal-timeslot">Suggested posting time (for a Germany/CET audience)</label>
+            <select class="form-input form-select" id="cal-timeslot">
+              <option value="morning">Morning ~8:00 CET</option>
+              <option value="lunch">Lunch ~12:30 CET</option>
+              <option value="evening">Evening ~18:00 CET</option>
+              <option value="custom">Custom…</option>
+            </select>
+            <input class="form-input" type="time" id="cal-timeslot-custom" style="margin-top:8px;" hidden>
+            <div class="form-hint">A label shown on each day to help you post at a good time — this never posts anything automatically.</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="cal-start-date">Start date</label>
+            <input class="form-input" type="date" id="cal-start-date">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="cal-days">Number of days</label>
+            <input class="form-input" type="number" id="cal-days" value="30" min="1" max="120">
+          </div>
+          <button class="btn-save" id="cal-scrape">1. Scrape friend's posts</button>
+          <div class="form-hint" id="cal-progress" style="margin-top:10px;"></div>
+        </div>
+
+        <div class="card" id="cal-post-checklist-card" hidden>
+          <div class="card-title">Pick which posts to use <span class="card-count" id="cal-post-checklist-count">0 selected</span></div>
+          <p class="card-desc">Unchecked posts are skipped entirely. Many image/GIF posts have thin captions that won't adapt well — uncheck those. Order is preserved oldest→newest among your selections.</p>
+          <div class="cal-post-checklist" id="cal-post-checklist"></div>
+          <button class="btn-save" id="cal-generate-step2" style="margin-top:14px;" disabled>2. Generate calendar (0 selected)</button>
+          <button class="btn-danger-sm" id="cal-cancel" hidden style="margin-left:8px;">Cancel</button>
+        </div>
+
+        <div class="history-toolbar">
+          <span id="cal-count">0 posts</span>
+          <div style="display:flex; gap:14px; align-items:center;">
+            <div class="cal-legend" style="display:flex; gap:10px; font-size:12px; align-items:center;">
+              <span><i class="cal-dot cal-dot-draft"></i> Draft</span>
+              <span><i class="cal-dot cal-dot-edited"></i> Edited</span>
+              <span><i class="cal-dot cal-dot-posted"></i> Posted</span>
+            </div>
+            <button class="btn-danger-sm" id="cal-clear">Clear Calendar</button>
+          </div>
+        </div>
+
+        <div class="cal-month-nav">
+          <button class="btn-icon" id="cal-prev-month">‹</button>
+          <span id="cal-month-label"></span>
+          <button class="btn-icon" id="cal-next-month">›</button>
+        </div>
+
+        <div class="cal-grid" id="cal-grid"></div>
+      </section>
+
       <!-- ── Advanced Tab ────────────────────────────────────────────────── -->
       <section class="tab-pane" id="tab-advanced">
         <div class="tab-header">
@@ -318,6 +451,26 @@ Appreciate you sharing this. One thing I'd add is that the human factor is often
         </div>
 
         <div class="card">
+          <div class="card-title">Background profile reading</div>
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div class="toggle-title">Allow background profile reading</div>
+              <div class="toggle-desc">Used by deep welcome-message drafts (Connections) and the Content Calendar's friend-post scrape. Off by default.</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="allow-bg-scraping">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="warning-box" id="bg-scraping-warning">
+            <strong>⚠️ Read before turning this on.</strong>
+            When enabled, the extension opens hidden LinkedIn tabs to read other people's profiles and recent activity (About, headline, recent posts).
+            LinkedIn's User Agreement prohibits automated scraping, so this may put your account at risk, and every visit shows up to that person as a profile view.
+            The text it reads is sent to your selected AI backend (cloud for Gemini/Claude). Leave it off unless you accept that risk.
+          </div>
+        </div>
+
+        <div class="card">
           <div class="card-title">Data Management</div>
           <div class="danger-zone">
             <button class="btn-danger" id="reset-all">⚠️ Reset All Data</button>
@@ -329,6 +482,28 @@ Appreciate you sharing this. One thing I'd add is that the human factor is often
       </section>
 
     </main>
+  </div>
+
+  <!-- Content Calendar edit modal -->
+  <div class="cal-modal-overlay" id="cal-modal-overlay" hidden>
+    <div class="cal-modal">
+      <div class="cal-modal-header">
+        <span id="cal-modal-title"></span>
+        <button class="btn-icon" id="cal-modal-close">✕</button>
+      </div>
+      <img class="cal-modal-image" id="cal-modal-image" alt="Original post image — grab this when you post" hidden>
+      <details class="cal-source-ref" id="cal-modal-source" hidden>
+        <summary id="cal-modal-source-summary"></summary>
+        <p class="form-hint" id="cal-modal-source-text"></p>
+      </details>
+      <textarea class="form-input form-textarea" id="cal-modal-content" rows="10"></textarea>
+      <div class="cal-modal-actions">
+        <button class="btn-save" id="cal-modal-save">Save</button>
+        <button class="btn-save" id="cal-modal-regenerate">↻ Regenerate</button>
+        <button class="btn-save" id="cal-modal-posted">📮 Mark as Posted</button>
+        <button class="btn-danger-sm" id="cal-modal-delete">Delete</button>
+      </div>
+    </div>
   </div>
 
   <!-- Toast notification -->

@@ -57,7 +57,19 @@ export class ReplyCache {
   setPending(commentId, intent, promise) {
     const key = this._key(commentId, intent);
     this._pending.set(key, promise);
-    promise.finally(() => this._pending.delete(key));
+    // Only clear the slot if it still holds THIS promise — a force-regenerate
+    // may have replaced it with a newer request in the meantime. The trailing
+    // catch keeps a rejected generation from surfacing as an unhandled
+    // rejection on this side-chain (the caller handles the real error).
+    promise
+      .finally(() => { if (this._pending.get(key) === promise) this._pending.delete(key); })
+      .catch(() => {});
+  }
+
+  /** Drop the in-flight entry (optionally only if it is `promise`). */
+  clearPending(commentId, intent, promise) {
+    const key = this._key(commentId, intent);
+    if (!promise || this._pending.get(key) === promise) this._pending.delete(key);
   }
 }
 

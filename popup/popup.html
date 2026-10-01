@@ -34,7 +34,7 @@
     <div class="status-card" id="status-card">
       <div class="status-row">
         <span class="status-dot" id="ollama-dot"></span>
-        <span class="status-label" id="ollama-label">Checking Ollama…</span>
+        <span class="status-label" id="ollama-label">Checking backend…</span>
         <span class="status-model" id="current-model"></span>
       </div>
     </div>
@@ -55,7 +55,7 @@
       </div>
     </div>
 
-    <!-- Setup Warning (shown when Ollama is down) -->
+    <!-- Setup Warning (shown when the selected backend isn't ready) -->
     <div class="setup-hint" id="setup-hint" hidden>
       <div class="hint-icon">⚠️</div>
       <div class="hint-content">
@@ -84,9 +84,9 @@
 
     <!-- Footer -->
     <footer class="footer">
-      <span id="ext-version">v1.0.5</span>
+      <span id="ext-version"></span>
       <span>·</span>
-      <span>Privacy-first · Local AI</span>
+      <span id="footer-mode"></span>
     </footer>
 
   </div>
