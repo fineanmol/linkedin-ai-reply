@@ -56,6 +56,7 @@ export class ReplyPanel {
    * @param {string} opts.commentText
    * @param {string} opts.authorName
    * @param {string} opts.postContent
+   * @param {string} [opts.postAuthorName] - who wrote the post (to detect the user's own post)
    * @param {string} opts.intent
    * @param {Function} opts.onClose
    * @param {Function} opts.onApprove - Called with { text, intent, commentId }
@@ -362,8 +363,11 @@ export class ReplyPanel {
           commentText: this.opts.commentText,
           authorName: this.opts.authorName,
           postContent: this.opts.postContent,
+          postAuthorName: this.opts.postAuthorName || '',
           intent: this.opts.intent,
           forceRegenerate,
+          // The draft being replaced, so regenerate doesn't return a reworded twin.
+          previousReply: forceRegenerate ? (this.currentReply || '') : '',
         },
       });
 

@@ -5,7 +5,7 @@
  */
 
 import { classifyIntent } from './intent-classifier.js';
-import { extractCommentData, findAncestorPost, expandSeeMore, findActionBarInComment } from '../utils/dom-helpers.js';
+import { extractCommentData, findAncestorPost, expandSeeMore, findActionBarInComment, getPostActor } from '../utils/dom-helpers.js';
 import { extractPostContent } from './comment-extractor.js';
 import { ReplyPanel } from './reply-panel.js';
 import { SELECTORS, UI } from '../utils/constants.js';
@@ -140,6 +140,10 @@ async function handleButtonClick(btn, commentEl) {
   // Extract fresh, fully-expanded data
   const comment = extractCommentData(commentEl);
   const postContent = postEl ? extractPostContent(postEl) : '';
+  // Who wrote the post, so the prompt can tell "a comment on my post" from
+  // "a comment on someone else's". Best-effort: null when it can't be read.
+  let postAuthorName = '';
+  try { postAuthorName = (postEl && getPostActor(postEl)?.name) || ''; } catch { /* layout changed */ }
 
   // Re-apply the raw-text fallback for click-time extraction too
   if (!comment.text || comment.text.length < 3) {
@@ -178,6 +182,7 @@ async function handleButtonClick(btn, commentEl) {
     commentText: comment.text,
     authorName: comment.authorName,
     postContent,
+    postAuthorName,
     intent,
     onClose: () => {
       openPanels.delete(panelId);

@@ -13,7 +13,7 @@ import { registerCalendarAlarm } from './alarms.js';
 import {
   getSettings, saveSettings,
   getStyleProfile, saveStyleProfile,
-  addToReplyHistory, updateReplyHistory,
+  addToReplyHistory, updateReplyHistory, getReplyHistory,
   getMyIdentity, saveMyIdentity,
   getEngagementQueue, addToEngagementQueue, updateEngagementQueueItem, clearEngagementQueue,
   getCommentsLog, addToCommentsLog, getEngagedUrns, commentCounts, clearCommentsLog,
@@ -156,7 +156,7 @@ async function handleMessage(message, sender) {
 
     // ─── Generate Reply ─────────────────────────────────────────────────
     case MSG.GENERATE_REPLY: {
-      const { commentId, commentText, authorName, postContent, intent, forceRegenerate } = payload;
+      const { commentId, commentText, authorName, postContent, postAuthorName, intent, forceRegenerate } = payload;
 
       // Debug: log what the content script sent so we can diagnose ID/text issues
       logger.info(
@@ -165,6 +165,8 @@ async function handleMessage(message, sender) {
 
       const cacheId = replyCacheId(commentId, commentText, authorName);
       const abortKey = `${cacheId}__${intent}`;
+
+      let previousReply = '';
 
       // Check cache first (unless force regenerating)
       if (!forceRegenerate) {
@@ -181,6 +183,9 @@ async function handleMessage(message, sender) {
         const pending = replyCache.getPending(cacheId, intent);
         if (pending) return pending;
       } else {
+        // The draft being replaced, so the new one can be told not to repeat it.
+        // The panel sends what it's showing; the cache is the fallback.
+        previousReply = String(payload.previousReply || replyCache.get(cacheId, intent)?.text || '');
         // Force-regenerate: abort the request it supersedes FIRST, then drop
         // its cache/pending slots so nothing stale is served or written back.
         const prev = inFlightControllers.get(abortKey);
@@ -207,11 +212,19 @@ async function handleMessage(message, sender) {
       // Fire request (deduplicated via cache)
       const requestPromise = (async () => {
         // Build context
-        const [{ styleContext }, settings, identity] = await Promise.all([
+        const [{ styleContext }, settings, identity, history] = await Promise.all([
           getProfileWithContext(),
           getSettings(),
           getMyIdentity(),
+          getReplyHistory().catch(() => []),
         ]);
+        // Last few drafts from the past day (other comments), so a thread of
+        // replies doesn't all open and flow the same way.
+        const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+        const recentReplies = (history || [])
+          .filter((h) => h?.reply && h.commentId !== commentId && (h.timestamp || 0) > dayAgo)
+          .slice(0, 4)
+          .map((h) => h.reply);
 
         const messages = buildMessages({
           userName: identity.name || 'the user',
@@ -220,9 +233,16 @@ async function handleMessage(message, sender) {
           comment: { text: commentText, authorName },
           intent,
           maxWords: settings.maxReplyLength,
+          // Lets the prompt tell "a comment on MY post" from "someone else's".
+          postAuthorName,
           // On regenerate, ask for a genuinely different angle so the user gets
           // variety instead of the same sentence reworded.
           vary: !!forceRegenerate,
+          previousReply,
+          // Stable per comment: each comment keeps its reply shape, and
+          // different comments in a thread get different shapes.
+          shapeSeed: parseInt(fnv1a(`${commentId || ''}\u0000${commentText || ''}`), 16),
+          recentReplies,
         });
 
         const result = await llmRouter.chat(messages, controller.signal);

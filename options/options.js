@@ -475,6 +475,7 @@ async function draftAll() {
       commentText: item.postText,
       authorName: item.authorName,
       postContent: item.postText,
+      postAuthorName: item.authorName,
       intent: 'post_comment',
     });
     if (gen?.reply) {
@@ -553,8 +554,10 @@ async function draftForItem(id) {
     commentText: item.postText,
     authorName: item.authorName,
     postContent: item.postText,
+    postAuthorName: item.authorName,
     intent: 'post_comment',
     forceRegenerate: !!item.draftReply,
+    previousReply: item.draftReply || '',
   });
   if (!gen?.reply) {
     // Show the error, but never save error text as the draft.

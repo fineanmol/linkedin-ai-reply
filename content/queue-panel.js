@@ -459,7 +459,8 @@ export class QueuePanel {
     if (ta) ta.value = 'Generating…';
     const gen = await send(MSG.GENERATE_REPLY, {
       commentId: `queue-${id}`, commentText: item.postText, authorName: item.authorName,
-      postContent: item.postText, intent: 'post_comment', forceRegenerate: !!item.draftReply,
+      postContent: item.postText, postAuthorName: item.authorName, intent: 'post_comment',
+      forceRegenerate: !!item.draftReply, previousReply: item.draftReply || '',
     });
     // On failure: report in the status line, keep the previous draft (or
     // empty) — error text must never become a draft "Copy & go" could copy.
@@ -483,7 +484,7 @@ export class QueuePanel {
       this.status(`Drafting ${n + 1} of ${pending.length}…`);
       const gen = await send(MSG.GENERATE_REPLY, {
         commentId: `queue-${item.id}`, commentText: item.postText, authorName: item.authorName,
-        postContent: item.postText, intent: 'post_comment',
+        postContent: item.postText, postAuthorName: item.authorName, intent: 'post_comment',
       });
       if (gen?.reply) {
         await send(MSG.UPDATE_QUEUE_ITEM, { id: item.id, patch: { draftReply: gen.reply } });
